@@ -1,0 +1,99 @@
+# Auto-NVIS Production Configuration
+
+# Ionospheric Grid Configuration
+grid:
+  lat_min: -90.0
+  lat_max: 90.0
+  lat_step: 2.5  # degrees
+
+  lon_min: -180.0
+  lon_max: 180.0
+  lon_step: 5.0  # degrees
+
+  alt_min: 60.0   # km
+  alt_max: 600.0  # km
+  alt_step: 10.0  # km
+
+# Data Source Configuration
+data_sources:
+  # GOES X-ray
+  goes_xray_url: "https://services.swpc.noaa.gov/json/goes/primary/xrays-7-day.json"
+  goes_update_interval: 60  # seconds
+
+  # ACE Solar Wind
+  ace_swepam_url: "https://services.swpc.noaa.gov/json/ace/swepam/ace_swepam_1m.json"
+  ace_mag_url: "https://services.swpc.noaa.gov/json/ace/mag/ace_mag_1m.json"
+  ace_update_interval: 60  # seconds
+
+  # GNSS-TEC
+  ntrip_host: "www.igs-ip.net"
+  ntrip_port: 2101
+  ntrip_mountpoint: "RTCM3"
+  ntrip_username: null  # Set via environment variable
+  ntrip_password: null  # Set via environment variable
+
+  # GIRO Ionosonde
+  giro_base_url: "https://giro.uml.edu/didbase"
+  giro_stations:
+    - "MHJ45"  # Millstone Hill
+    - "AT138"  # Athens
+    - "EA036"  # El Arenosillo
+  giro_update_interval: 300  # seconds (5 minutes)
+
+# Service Configuration
+services:
+  rabbitmq_host: "rabbitmq"
+  rabbitmq_port: 5672
+  rabbitmq_user: "guest"
+  rabbitmq_password: "guest"
+
+  redis_host: "redis"
+  redis_port: 6379
+  redis_db: 0
+
+  assimilation_host: "assimilation"
+  assimilation_port: 50051
+
+  supervisor_host: "supervisor"
+  supervisor_port: 8000
+
+  output_host: "output"
+  output_port: 8080
+
+# SR-UKF Configuration
+sr_ukf:
+  # Unscented transform parameters
+  alpha: 0.001  # Spread parameter
+  beta: 2.0     # Prior knowledge (2 for Gaussian)
+  kappa: 0.0    # Secondary scaling
+
+  # Process noise
+  process_noise_ne: 1.0e10   # (el/m³)²
+  process_noise_reff: 10.0   # Effective sunspot number variance
+
+  # Observation noise
+  obs_noise_tec: 2.0    # TECU
+  obs_noise_fof2: 0.5   # MHz
+  obs_noise_hmf2: 10.0  # km
+
+  # Numerical stability
+  min_eigenvalue: 1.0e-10
+  covariance_inflation: 1.0
+
+# Supervisor Configuration
+supervisor:
+  # Mode switching
+  xray_threshold_m1: 1.0e-5  # M1 class (W/m²)
+  mode_switch_hysteresis_sec: 600  # 10 minutes
+
+  # Cycle timing
+  update_cycle_sec: 900  # 15 minutes
+  max_cycle_duration_sec: 1200  # 20 minutes
+
+  # Health monitoring
+  health_check_interval_sec: 30
+  data_staleness_threshold_sec: 300  # 5 minutes
+
+# Data Directories
+data_dir: "/data"
+config_dir: "/config"
