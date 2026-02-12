@@ -18,11 +18,27 @@ namespace autonvis {
  *
  * Updates Cholesky factor S such that S_new * S_new^T = S * S^T + v * v^T
  *
- * @param S Input Cholesky factor (lower triangular)
+ * @param S Input Cholesky factor (lower triangular L, such that P = L * L^T)
  * @param v Update vector
- * @return Updated Cholesky factor
+ * @return Updated Cholesky factor (lower triangular)
  */
-Eigen::MatrixXd cholupdate(const Eigen::MatrixXd& S, const Eigen::VectorXd& v);
+inline Eigen::MatrixXd cholupdate(const Eigen::MatrixXd& S, const Eigen::VectorXd& v) {
+    const Eigen::Index n = S.rows();
+
+    // Compute P_new = S * S^T + v*v^T
+    Eigen::MatrixXd P = S * S.transpose();
+    P += v * v.transpose();
+
+    // Cholesky decomposition of P_new
+    Eigen::LLT<Eigen::MatrixXd> llt(P);
+    if (llt.info() != Eigen::Success) {
+        throw std::runtime_error("cholupdate: Cholesky decomposition failed");
+    }
+
+    // Extract and return lower triangular L
+    Eigen::MatrixXd L = Eigen::MatrixXd(llt.matrixL());
+    return L;
+}
 
 /**
  * @brief Rank-1 Cholesky downdate (choldowndate)

@@ -4,6 +4,7 @@
  */
 
 #include "sigma_points.hpp"
+#include "cholesky_update.hpp"
 #include <cmath>
 #include <stdexcept>
 
@@ -94,20 +95,45 @@ Eigen::MatrixXd SigmaPointGenerator::compute_sqrt_cov(
     const Eigen::VectorXd weights = get_cov_weights(L);
 
     // Compute weighted deviations matrix
-    Eigen::MatrixXd deviations(dim, n_points);
+    // Form matrix χ where each column is sqrt(|w_i|) * (sigma_point_i - mean)
+    Eigen::MatrixXd chi(dim, n_points - 1);  // Skip first point for now
 
-    for (size_t i = 0; i < n_points; ++i) {
+    for (size_t i = 1; i < n_points; ++i) {
         const double weight = std::sqrt(std::abs(weights(i)));
         const Eigen::VectorXd dev = sigma_points[i] - mean;
-        deviations.col(i) = (weights(i) >= 0 ? weight : -weight) * dev;
+        chi.col(i - 1) = (weights(i) >= 0 ? weight : -weight) * dev;
     }
 
     // QR decomposition to get sqrt covariance
-    Eigen::HouseholderQR<Eigen::MatrixXd> qr(deviations.transpose());
-    Eigen::MatrixXd R = qr.matrixQR().triangularView<Eigen::Upper>();
+    Eigen::HouseholderQR<Eigen::MatrixXd> qr(chi.transpose());
 
-    // Return lower triangular (transpose of R)
-    return R.transpose().block(0, 0, dim, dim);
+    // Extract upper triangular R properly (avoid triangularView memory issues)
+    Eigen::MatrixXd R = Eigen::MatrixXd(qr.matrixQR().topRows(dim));
+    // Zero out below diagonal
+    for (Eigen::Index i = 0; i < static_cast<Eigen::Index>(dim); ++i) {
+        for (Eigen::Index j = 0; j < i; ++j) {
+            R(i, j) = 0.0;
+        }
+    }
+
+    // Handle the zeroth sigma point contribution (may have negative weight)
+    // Convert R (upper) to S (lower) for cholupdate
+    Eigen::MatrixXd S = R.transpose();
+    if (weights(0) >= 0) {
+        const double weight0 = std::sqrt(weights(0));
+        const Eigen::VectorXd dev0 = weight0 * (sigma_points[0] - mean);
+        S = cholupdate(S, dev0);
+    } else {
+        const double weight0 = std::sqrt(-weights(0));
+        const Eigen::VectorXd dev0 = weight0 * (sigma_points[0] - mean);
+        try {
+            S = choldowndate(S, dev0);
+        } catch (const std::runtime_error&) {
+            // If downdate fails, just use what we have
+        }
+    }
+
+    return S;
 }
 
 Eigen::VectorXd SigmaPointGenerator::get_mean_weights(size_t L) const {

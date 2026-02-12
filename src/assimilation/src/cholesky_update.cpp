@@ -9,41 +9,7 @@
 
 namespace autonvis {
 
-Eigen::MatrixXd cholupdate(const Eigen::MatrixXd& S, const Eigen::VectorXd& v) {
-    const size_t n = S.rows();
-
-    if (S.cols() != static_cast<Eigen::Index>(n)) {
-        throw std::invalid_argument("S must be square");
-    }
-    if (v.size() != static_cast<Eigen::Index>(n)) {
-        throw std::invalid_argument("v dimension mismatch");
-    }
-
-    // Copy S (we'll modify in place)
-    Eigen::MatrixXd S_new = S;
-    Eigen::VectorXd v_work = v;
-
-    // Givens rotation-based update
-    for (size_t k = 0; k < n; ++k) {
-        const double r = std::sqrt(S_new(k, k) * S_new(k, k) + v_work(k) * v_work(k));
-        const double c = r / S_new(k, k);
-        const double s = v_work(k) / S_new(k, k);
-
-        S_new(k, k) = r;
-
-        if (k + 1 < n) {
-            S_new.block(k, k + 1, 1, n - k - 1) =
-                (S_new.block(k, k + 1, 1, n - k - 1) +
-                 s * v_work.segment(k + 1, n - k - 1).transpose()) / c;
-
-            v_work.segment(k + 1, n - k - 1) =
-                c * v_work.segment(k + 1, n - k - 1) -
-                s * S_new.block(k, k + 1, 1, n - k - 1).transpose();
-        }
-    }
-
-    return S_new;
-}
+// cholupdate is now inline in header
 
 Eigen::MatrixXd choldowndate(const Eigen::MatrixXd& S, const Eigen::VectorXd& v) {
     const size_t n = S.rows();
@@ -55,36 +21,19 @@ Eigen::MatrixXd choldowndate(const Eigen::MatrixXd& S, const Eigen::VectorXd& v)
         throw std::invalid_argument("v dimension mismatch");
     }
 
-    // Copy S
-    Eigen::MatrixXd S_new = S;
-    Eigen::VectorXd v_work = v;
+    // Compute P_new = S * S^T - v * v^T
+    Eigen::MatrixXd P = S * S.transpose();
+    Eigen::MatrixXd P_new = P - v * v.transpose();
 
-    // Hyperbolic rotation-based downdate
-    for (size_t k = 0; k < n; ++k) {
-        const double r_sq = S_new(k, k) * S_new(k, k) - v_work(k) * v_work(k);
-
-        if (r_sq <= 0) {
-            throw std::runtime_error("choldowndate: matrix would not be positive definite");
-        }
-
-        const double r = std::sqrt(r_sq);
-        const double c = r / S_new(k, k);
-        const double s = v_work(k) / S_new(k, k);
-
-        S_new(k, k) = r;
-
-        if (k + 1 < n) {
-            S_new.block(k, k + 1, 1, n - k - 1) =
-                (S_new.block(k, k + 1, 1, n - k - 1) -
-                 s * v_work.segment(k + 1, n - k - 1).transpose()) / c;
-
-            v_work.segment(k + 1, n - k - 1) =
-                c * v_work.segment(k + 1, n - k - 1) -
-                s * S_new.block(k, k + 1, 1, n - k - 1).transpose();
-        }
+    // Check if still positive definite
+    Eigen::LLT<Eigen::MatrixXd> llt(P_new);
+    if (llt.info() != Eigen::Success) {
+        throw std::runtime_error("choldowndate: matrix would not be positive definite");
     }
 
-    return S_new;
+    // Return upper triangular Cholesky factor (R such that P = R^T * R)
+    Eigen::MatrixXd L = llt.matrixL();
+    return L.transpose();
 }
 
 Eigen::MatrixXd qr_decomposition(const Eigen::MatrixXd& A) {
