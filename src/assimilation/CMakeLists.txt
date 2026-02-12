@@ -35,6 +35,7 @@ set(SOURCES
     src/state_vector.cpp
     src/sigma_points.cpp
     src/cholesky_update.cpp
+    src/observation_model.cpp
     models/gauss_markov.cpp
 )
 
@@ -78,10 +79,10 @@ add_executable(test_cholesky tests/test_cholesky.cpp)
 target_link_libraries(test_cholesky autonvis_assimilation)
 add_test(NAME CholeskyTest COMMAND test_cholesky)
 
-# SR-UKF test disabled for now (needs observation model implementation)
-# add_executable(test_sr_ukf tests/test_sr_ukf.cpp)
-# target_link_libraries(test_sr_ukf autonvis_assimilation)
-# add_test(NAME SRUKFTest COMMAND test_sr_ukf)
+# SR-UKF integration test
+add_executable(test_sr_ukf tests/test_sr_ukf.cpp)
+target_link_libraries(test_sr_ukf autonvis_assimilation)
+add_test(NAME SRUKFTest COMMAND test_sr_ukf)
 
 # Installation
 install(TARGETS assimilation_service DESTINATION bin)
