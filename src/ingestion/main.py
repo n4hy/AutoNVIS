@@ -17,6 +17,7 @@ from src.common.logging_config import setup_logging, ServiceLogger
 from src.common.message_queue import MessageQueueClient
 from src.ingestion.space_weather.goes_xray_client import GOESXRayClient
 from src.ingestion.space_weather.ace_solar_wind import ACESolarWindClient
+from src.ingestion.gnss.gnss_tec_client import GNSSTECClient
 
 
 class IngestionOrchestrator:
@@ -35,6 +36,7 @@ class IngestionOrchestrator:
         # Client instances
         self.goes_client = None
         self.ace_client = None
+        self.gnss_tec_client = None
 
         # Task handles
         self.tasks = []
@@ -66,6 +68,7 @@ class IngestionOrchestrator:
         # Initialize clients
         self.goes_client = GOESXRayClient(mq_client=self.mq_client)
         self.ace_client = ACESolarWindClient(mq_client=self.mq_client)
+        self.gnss_tec_client = GNSSTECClient(mq_client=self.mq_client)
 
         self.logger.info("All clients initialized")
 
@@ -89,7 +92,14 @@ class IngestionOrchestrator:
         self.tasks.append(ace_task)
         self.logger.info("ACE solar wind monitoring started")
 
-        # TODO: Add GNSS-TEC monitoring when implemented
+        # Start GNSS-TEC monitoring
+        gnss_tec_task = asyncio.create_task(
+            self.gnss_tec_client.run_monitoring_loop(),
+            name="gnss_tec"
+        )
+        self.tasks.append(gnss_tec_task)
+        self.logger.info("GNSS-TEC monitoring started")
+
         # TODO: Add ionosonde monitoring when implemented
 
         self.logger.info(f"Started {len(self.tasks)} ingestion services")
