@@ -1,0 +1,209 @@
+version: '3.8'
+
+services:
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: autonvis-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: autonvis
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-autonvis_secure_password}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - autonvis-network
+    restart: unless-stopped
+
+  # PostgreSQL Database (for state storage)
+  postgres:
+    image: postgres:15
+    container_name: autonvis-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: autonvis
+      POSTGRES_USER: autonvis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-autonvis_secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autonvis"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - autonvis-network
+    restart: unless-stopped
+
+  # Redis (for caching and real-time data)
+  redis:
+    image: redis:7-alpine
+    container_name: autonvis-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - autonvis-network
+    restart: unless-stopped
+
+  # NVIS Sounder Client (Ingestion)
+  nvis-client:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.nvis
+    container_name: autonvis-nvis-client
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=autonvis
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-autonvis_secure_password}
+    volumes:
+      - ./config/production.yml:/app/config/production.yml:ro
+      - ./logs:/app/logs
+    ports:
+      - "8001:8001"  # TCP adapter
+      - "8002:8002"  # HTTP adapter
+    networks:
+      - autonvis-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Filter Orchestrator
+  filter-orchestrator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.nvis
+    container_name: autonvis-filter-orchestrator
+    command: ["python", "-m", "src.supervisor.filter_orchestrator", "--config", "config/production.yml"]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=autonvis
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-autonvis_secure_password}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=autonvis
+      - POSTGRES_USER=autonvis
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-autonvis_secure_password}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./config/production.yml:/app/config/production.yml:ro
+      - ./logs:/app/logs
+      - ./data:/app/data
+    networks:
+      - autonvis-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # NVIS Analytics Dashboard
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: autonvis-dashboard
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=autonvis
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-autonvis_secure_password}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./config/production.yml:/app/config/production.yml:ro
+      - ./logs:/app/logs
+    ports:
+      - "8080:8080"
+    networks:
+      - autonvis-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Prometheus (Metrics Collection)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: autonvis-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    networks:
+      - autonvis-network
+    restart: unless-stopped
+
+  # Grafana (Visualization)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: autonvis-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - autonvis-network
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  autonvis-network:
+    driver: bridge

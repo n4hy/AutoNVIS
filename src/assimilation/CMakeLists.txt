@@ -36,6 +36,7 @@ set(SOURCES
     src/sigma_points.cpp
     src/cholesky_update.cpp
     src/observation_model.cpp
+    src/nvis_observation_model.cpp
     models/gauss_markov.cpp
 )
 
@@ -45,6 +46,7 @@ set(HEADERS
     include/state_vector.hpp
     include/sigma_points.hpp
     include/observation_model.hpp
+    include/nvis_observation_model.hpp
     include/physics_model.hpp
     include/cholesky_update.hpp
 )
@@ -91,6 +93,11 @@ target_link_libraries(demo_localization autonvis_assimilation)
 # Phase 1 validation suite
 add_executable(validation_phase1 tests/validation_phase1.cpp)
 target_link_libraries(validation_phase1 autonvis_assimilation)
+
+# NVIS observation model test
+add_executable(test_nvis_model tests/test_nvis_model.cpp)
+target_link_libraries(test_nvis_model autonvis_assimilation)
+add_test(NAME NVISModelTest COMMAND test_nvis_model)
 
 # Installation
 install(TARGETS assimilation_service DESTINATION bin)

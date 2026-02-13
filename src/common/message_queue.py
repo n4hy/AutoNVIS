@@ -229,6 +229,8 @@ class Topics:
     # Observation topics
     OBS_GNSS_TEC = "obs.gnss_tec"
     OBS_IONOSONDE = "obs.ionosonde"
+    OBS_NVIS_SOUNDER = "obs.nvis_sounder"
+    OBS_NVIS_QUALITY = "obs.nvis_quality"
 
     # Processing topics
     PROC_STATE_UPDATE = "proc.state_update"
@@ -242,6 +244,9 @@ class Topics:
     OUT_FREQUENCY_PLAN = "out.frequency_plan"
     OUT_COVERAGE_MAP = "out.coverage_map"
     OUT_ALERT = "out.alert"
+
+    # Analysis topics
+    ANALYSIS_INFO_GAIN = "analysis.info_gain"
 
     # Health monitoring
     HEALTH_STATUS = "health.status"

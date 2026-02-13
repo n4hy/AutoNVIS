@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVIS Analytics Dashboard</title>
+
+    <!-- Leaflet CSS for maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Chart.js CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🛰️ NVIS Sounder Network Analytics</h1>
+            <div class="status-indicator" id="connection-status">
+                <span class="status-dot"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
+        </header>
+
+        <!-- Summary Cards -->
+        <div class="summary-cards">
+            <div class="card">
+                <div class="card-icon">🎯</div>
+                <div class="card-content">
+                    <div class="card-label">Total Sounders</div>
+                    <div class="card-value" id="total-sounders">-</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-icon">📊</div>
+                <div class="card-content">
+                    <div class="card-label">Observations</div>
+                    <div class="card-value" id="total-observations">-</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-icon">📈</div>
+                <div class="card-content">
+                    <div class="card-label">Information Gain</div>
+                    <div class="card-value" id="information-gain">-</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-icon">🎲</div>
+                <div class="card-content">
+                    <div class="card-label">Uncertainty Reduction</div>
+                    <div class="card-value" id="uncertainty-reduction">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="content-grid">
+            <!-- Left Column -->
+            <div class="left-column">
+                <!-- Network Map -->
+                <div class="panel">
+                    <h2>Network Map</h2>
+                    <div id="map" style="height: 400px;"></div>
+                    <div class="map-legend">
+                        <div class="legend-item">
+                            <span class="legend-marker platinum"></span>
+                            <span>Platinum</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-marker gold"></span>
+                            <span>Gold</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-marker silver"></span>
+                            <span>Silver</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-marker bronze"></span>
+                            <span>Bronze</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-marker recommended"></span>
+                            <span>Recommended</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sounder List -->
+                <div class="panel">
+                    <h2>Sounders</h2>
+                    <div class="table-container">
+                        <table id="sounder-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Tier</th>
+                                    <th>Observations</th>
+                                    <th>Contribution</th>
+                                    <th>Info Gain</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sounder-tbody">
+                                <tr>
+                                    <td colspan="5" class="loading">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column -->
+            <div class="right-column">
+                <!-- Information Gain Chart -->
+                <div class="panel">
+                    <h2>Information Gain by Sounder</h2>
+                    <canvas id="info-gain-chart"></canvas>
+                </div>
+
+                <!-- Quality Tier Distribution -->
+                <div class="panel">
+                    <h2>Quality Tier Distribution</h2>
+                    <canvas id="quality-chart"></canvas>
+                </div>
+
+                <!-- Placement Recommendations -->
+                <div class="panel">
+                    <h2>Placement Recommendations</h2>
+                    <div id="placement-recommendations">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+
+                <!-- Upgrade Recommendations -->
+                <div class="panel">
+                    <h2>Upgrade Priorities</h2>
+                    <div id="upgrade-recommendations">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Auto-NVIS Dashboard v1.0 | Last Update: <span id="last-update">-</span></p>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

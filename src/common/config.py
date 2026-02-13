@@ -160,6 +160,68 @@ class SupervisorConfig:
 
 
 @dataclass
+class NVISAdapterConfig:
+    """Configuration for a single NVIS protocol adapter"""
+    enabled: bool = False
+    host: str = "0.0.0.0"
+    port: int = 8001
+    topic_prefix: Optional[str] = None
+    imap_host: Optional[str] = None
+    imap_port: Optional[int] = None
+
+
+@dataclass
+class NVISQualityTierConfig:
+    """Configuration for a single quality tier"""
+    signal_error_db: float = 2.0
+    delay_error_ms: float = 0.1
+    min_score: float = 0.8
+
+
+@dataclass
+class NVISIngestionConfig:
+    """Configuration for NVIS sounder data ingestion"""
+
+    # Protocol adapters
+    tcp: NVISAdapterConfig = field(default_factory=lambda: NVISAdapterConfig(enabled=True, port=8001))
+    http: NVISAdapterConfig = field(default_factory=lambda: NVISAdapterConfig(enabled=True, port=8002))
+    mqtt: NVISAdapterConfig = field(default_factory=lambda: NVISAdapterConfig(enabled=False, port=1883))
+    email: NVISAdapterConfig = field(default_factory=lambda: NVISAdapterConfig(enabled=False))
+
+    # Quality tiers
+    platinum: NVISQualityTierConfig = field(default_factory=lambda: NVISQualityTierConfig(
+        signal_error_db=2.0, delay_error_ms=0.1, min_score=0.80
+    ))
+    gold: NVISQualityTierConfig = field(default_factory=lambda: NVISQualityTierConfig(
+        signal_error_db=4.0, delay_error_ms=0.5, min_score=0.60
+    ))
+    silver: NVISQualityTierConfig = field(default_factory=lambda: NVISQualityTierConfig(
+        signal_error_db=8.0, delay_error_ms=2.0, min_score=0.40
+    ))
+    bronze: NVISQualityTierConfig = field(default_factory=lambda: NVISQualityTierConfig(
+        signal_error_db=15.0, delay_error_ms=5.0, min_score=0.0
+    ))
+
+    # Aggregation settings
+    window_seconds: int = 60
+    rate_threshold: int = 60  # obs/hour triggers aggregation
+
+    # Rate limiting (max observations per 15-min cycle)
+    max_obs_per_cycle_platinum: int = 50
+    max_obs_per_cycle_gold: int = 30
+    max_obs_per_cycle_silver: int = 15
+    max_obs_per_cycle_bronze: int = 5
+
+    # Quality component weights (sum to 1.0)
+    weight_signal_quality: float = 0.25
+    weight_calibration_quality: float = 0.20
+    weight_temporal_quality: float = 0.15
+    weight_spatial_quality: float = 0.15
+    weight_equipment_quality: float = 0.15
+    weight_historical_quality: float = 0.10
+
+
+@dataclass
 class AutoNVISConfig:
     """Master configuration for Auto-NVIS system"""
 
@@ -168,6 +230,7 @@ class AutoNVISConfig:
     services: ServiceConfig = field(default_factory=ServiceConfig)
     sr_ukf: SRUKFConfig = field(default_factory=SRUKFConfig)
     supervisor: SupervisorConfig = field(default_factory=SupervisorConfig)
+    nvis_ingestion: NVISIngestionConfig = field(default_factory=NVISIngestionConfig)
 
     # Paths
     data_dir: Path = field(default_factory=lambda: Path("/data"))
@@ -194,12 +257,44 @@ class AutoNVISConfig:
         with open(yaml_path, 'r') as f:
             config_dict = yaml.safe_load(f)
 
+        # Parse NVIS ingestion config with nested structures
+        nvis_config_dict = config_dict.get('nvis_ingestion', {})
+        adapters = nvis_config_dict.get('adapters', {})
+        quality_tiers = nvis_config_dict.get('quality_tiers', {})
+        aggregation = nvis_config_dict.get('aggregation', {})
+        rate_limiting = nvis_config_dict.get('rate_limiting', {}).get('max_obs_per_cycle', {})
+        quality_weights = nvis_config_dict.get('quality_weights', {})
+
+        nvis_ingestion = NVISIngestionConfig(
+            tcp=NVISAdapterConfig(**adapters.get('tcp', {})),
+            http=NVISAdapterConfig(**adapters.get('http', {})),
+            mqtt=NVISAdapterConfig(**adapters.get('mqtt', {})),
+            email=NVISAdapterConfig(**adapters.get('email', {})),
+            platinum=NVISQualityTierConfig(**quality_tiers.get('platinum', {})),
+            gold=NVISQualityTierConfig(**quality_tiers.get('gold', {})),
+            silver=NVISQualityTierConfig(**quality_tiers.get('silver', {})),
+            bronze=NVISQualityTierConfig(**quality_tiers.get('bronze', {})),
+            window_seconds=aggregation.get('window_seconds', 60),
+            rate_threshold=aggregation.get('rate_threshold', 60),
+            max_obs_per_cycle_platinum=rate_limiting.get('platinum', 50),
+            max_obs_per_cycle_gold=rate_limiting.get('gold', 30),
+            max_obs_per_cycle_silver=rate_limiting.get('silver', 15),
+            max_obs_per_cycle_bronze=rate_limiting.get('bronze', 5),
+            weight_signal_quality=quality_weights.get('signal_quality', 0.25),
+            weight_calibration_quality=quality_weights.get('calibration_quality', 0.20),
+            weight_temporal_quality=quality_weights.get('temporal_quality', 0.15),
+            weight_spatial_quality=quality_weights.get('spatial_quality', 0.15),
+            weight_equipment_quality=quality_weights.get('equipment_quality', 0.15),
+            weight_historical_quality=quality_weights.get('historical_quality', 0.10)
+        )
+
         return cls(
             grid=GridConfig(**config_dict.get('grid', {})),
             data_sources=DataSourceConfig(**config_dict.get('data_sources', {})),
             services=ServiceConfig(**config_dict.get('services', {})),
             sr_ukf=SRUKFConfig(**config_dict.get('sr_ukf', {})),
             supervisor=SupervisorConfig(**config_dict.get('supervisor', {})),
+            nvis_ingestion=nvis_ingestion,
             data_dir=Path(config_dict.get('data_dir', '/data')),
             config_dir=Path(config_dict.get('config_dir', '/config'))
         )
@@ -212,6 +307,7 @@ class AutoNVISConfig:
             'services': self.services.__dict__,
             'sr_ukf': self.sr_ukf.__dict__,
             'supervisor': self.supervisor.__dict__,
+            'nvis_ingestion': self.nvis_ingestion.__dict__,
             'data_dir': str(self.data_dir),
             'config_dir': str(self.config_dir)
         }

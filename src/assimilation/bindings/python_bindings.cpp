@@ -14,6 +14,7 @@
 #include "sr_ukf.hpp"
 #include "state_vector.hpp"
 #include "observation_model.hpp"
+#include "nvis_observation_model.hpp"
 #include "physics_model.hpp"
 #include "cholesky_update.hpp"
 
@@ -113,6 +114,53 @@ PYBIND11_MODULE(autonvis_srukf, m) {
              py::arg("lon_grid"),
              py::arg("alt_grid"),
              "Create TEC observation model");
+
+    // ============================
+    // NVISSounderObservationModel
+    // ============================
+    py::class_<NVISSounderObservationModel::NVISMeasurement>(m, "NVISMeasurement")
+        .def(py::init<>())
+        .def_readwrite("tx_latitude", &NVISSounderObservationModel::NVISMeasurement::tx_latitude)
+        .def_readwrite("tx_longitude", &NVISSounderObservationModel::NVISMeasurement::tx_longitude)
+        .def_readwrite("tx_altitude", &NVISSounderObservationModel::NVISMeasurement::tx_altitude)
+        .def_readwrite("rx_latitude", &NVISSounderObservationModel::NVISMeasurement::rx_latitude)
+        .def_readwrite("rx_longitude", &NVISSounderObservationModel::NVISMeasurement::rx_longitude)
+        .def_readwrite("rx_altitude", &NVISSounderObservationModel::NVISMeasurement::rx_altitude)
+        .def_readwrite("frequency", &NVISSounderObservationModel::NVISMeasurement::frequency)
+        .def_readwrite("elevation_angle", &NVISSounderObservationModel::NVISMeasurement::elevation_angle)
+        .def_readwrite("azimuth", &NVISSounderObservationModel::NVISMeasurement::azimuth)
+        .def_readwrite("hop_distance", &NVISSounderObservationModel::NVISMeasurement::hop_distance)
+        .def_readwrite("signal_strength", &NVISSounderObservationModel::NVISMeasurement::signal_strength)
+        .def_readwrite("group_delay", &NVISSounderObservationModel::NVISMeasurement::group_delay)
+        .def_readwrite("snr", &NVISSounderObservationModel::NVISMeasurement::snr)
+        .def_readwrite("signal_strength_error", &NVISSounderObservationModel::NVISMeasurement::signal_strength_error)
+        .def_readwrite("group_delay_error", &NVISSounderObservationModel::NVISMeasurement::group_delay_error)
+        .def_readwrite("is_o_mode", &NVISSounderObservationModel::NVISMeasurement::is_o_mode)
+        .def_readwrite("tx_power", &NVISSounderObservationModel::NVISMeasurement::tx_power)
+        .def_readwrite("tx_antenna_gain", &NVISSounderObservationModel::NVISMeasurement::tx_antenna_gain)
+        .def_readwrite("rx_antenna_gain", &NVISSounderObservationModel::NVISMeasurement::rx_antenna_gain);
+
+    py::class_<NVISSounderObservationModel, ObservationModel, std::shared_ptr<NVISSounderObservationModel>>(
+        m, "NVISSounderObservationModel")
+        .def(py::init<const std::vector<NVISSounderObservationModel::NVISMeasurement>&,
+                      const std::vector<double>&,
+                      const std::vector<double>&,
+                      const std::vector<double>&>(),
+             py::arg("measurements"),
+             py::arg("lat_grid"),
+             py::arg("lon_grid"),
+             py::arg("alt_grid"),
+             "Create NVIS sounder observation model")
+        .def("predict_signal_strength_simplified",
+             &NVISSounderObservationModel::predict_signal_strength_simplified,
+             py::arg("measurement"),
+             py::arg("state"),
+             "Predict signal strength for a measurement")
+        .def("predict_group_delay_simplified",
+             &NVISSounderObservationModel::predict_group_delay_simplified,
+             py::arg("measurement"),
+             py::arg("state"),
+             "Predict group delay for a measurement");
 
     // ============================
     // SquareRootUKF Configuration

@@ -94,6 +94,64 @@ supervisor:
   health_check_interval_sec: 30
   data_staleness_threshold_sec: 300  # 5 minutes
 
+# NVIS Sounder Ingestion Configuration
+nvis_ingestion:
+  adapters:
+    tcp:
+      enabled: true
+      port: 8001
+      host: "0.0.0.0"
+    http:
+      enabled: true
+      port: 8002
+      host: "0.0.0.0"
+    mqtt:
+      enabled: false
+      host: "localhost"
+      port: 1883
+      topic_prefix: "nvis/"
+    email:
+      enabled: false
+      imap_host: "imap.gmail.com"
+      imap_port: 993
+
+  quality_tiers:
+    platinum:
+      signal_error_db: 2.0
+      delay_error_ms: 0.1
+      min_score: 0.80
+    gold:
+      signal_error_db: 4.0
+      delay_error_ms: 0.5
+      min_score: 0.60
+    silver:
+      signal_error_db: 8.0
+      delay_error_ms: 2.0
+      min_score: 0.40
+    bronze:
+      signal_error_db: 15.0
+      delay_error_ms: 5.0
+      min_score: 0.0
+
+  aggregation:
+    window_seconds: 60
+    rate_threshold: 60  # obs/hour triggers aggregation
+
+  rate_limiting:
+    max_obs_per_cycle:
+      platinum: 50
+      gold: 30
+      silver: 15
+      bronze: 5
+
+  quality_weights:
+    signal_quality: 0.25
+    calibration_quality: 0.20
+    temporal_quality: 0.15
+    spatial_quality: 0.15
+    equipment_quality: 0.15
+    historical_quality: 0.10
+
 # Data Directories
 data_dir: "/data"
 config_dir: "/config"
