@@ -10,6 +10,7 @@
 #define SR_UKF_HPP
 
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
 #include <memory>
 #include <vector>
 #include <string>
@@ -122,9 +123,75 @@ public:
         double avg_update_time_ms;
         double min_eigenvalue;
         double max_eigenvalue;
+
+        // Adaptive inflation statistics
+        double last_nis;              ///< Normalized Innovation Squared
+        double avg_nis;               ///< Average NIS over updates
+        double inflation_factor;      ///< Current inflation factor
+        size_t divergence_count;      ///< Number of divergence detections
     };
 
     Statistics get_statistics() const { return stats_; }
+
+    /**
+     * @brief Configuration for adaptive inflation
+     */
+    struct AdaptiveInflationConfig {
+        bool enabled = true;           ///< Enable adaptive inflation
+        double initial_inflation = 1.0;///< Initial inflation factor
+        double min_inflation = 1.0;    ///< Minimum inflation factor
+        double max_inflation = 2.0;    ///< Maximum inflation factor
+        double adaptation_rate = 0.95; ///< Exponential smoothing factor
+        double divergence_threshold = 3.0; ///< NIS threshold for divergence (in multiples of expected)
+    };
+
+    /**
+     * @brief Set adaptive inflation configuration
+     */
+    void set_adaptive_inflation_config(const AdaptiveInflationConfig& config) {
+        inflation_config_ = config;
+    }
+
+    /**
+     * @brief Get current adaptive inflation configuration
+     */
+    const AdaptiveInflationConfig& get_inflation_config() const {
+        return inflation_config_;
+    }
+
+    /**
+     * @brief Configuration for covariance localization
+     */
+    struct LocalizationConfig {
+        bool enabled = false;          ///< Enable covariance localization
+        double radius_km = 500.0;      ///< Localization radius (km)
+        bool precompute = true;        ///< Precompute localization matrix (faster but more memory)
+    };
+
+    /**
+     * @brief Set covariance localization configuration
+     *
+     * Computes and stores the sparse localization matrix if precompute=true.
+     * Must be called after initialization to set grid parameters.
+     *
+     * @param config Localization configuration
+     * @param lat_grid Latitude grid points (degrees)
+     * @param lon_grid Longitude grid points (degrees)
+     * @param alt_grid Altitude grid points (km)
+     */
+    void set_localization_config(
+        const LocalizationConfig& config,
+        const std::vector<double>& lat_grid,
+        const std::vector<double>& lon_grid,
+        const std::vector<double>& alt_grid
+    );
+
+    /**
+     * @brief Get current localization configuration
+     */
+    const LocalizationConfig& get_localization_config() const {
+        return localization_config_;
+    }
 
     /**
      * @brief Set process noise sqrt covariance
@@ -158,6 +225,30 @@ private:
 
     // Statistics
     Statistics stats_;
+
+    // Adaptive inflation configuration
+    AdaptiveInflationConfig inflation_config_;
+
+    // Covariance localization
+    LocalizationConfig localization_config_;
+    Eigen::SparseMatrix<double> localization_matrix_;  ///< Precomputed localization (optional)
+
+    /**
+     * @brief Compute Normalized Innovation Squared (NIS) metric
+     * @param innovation Innovation vector (y - h(x))
+     * @param S_yy Innovation sqrt covariance
+     * @return NIS value (follows χ² distribution with obs_dim DoF)
+     */
+    double compute_nis(
+        const Eigen::VectorXd& innovation,
+        const Eigen::MatrixXd& S_yy
+    ) const;
+
+    /**
+     * @brief Compute and apply adaptive inflation
+     * Called after predict step, uses innovation statistics from previous update
+     */
+    void apply_adaptive_inflation();
 
     /**
      * @brief Propagate sigma points through physics model

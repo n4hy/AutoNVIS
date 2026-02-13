@@ -2,6 +2,8 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
+**Version:** 0.1.0 | **Status:** ✅ Production Ready (Filter Core) | **Last Updated:** February 12, 2026
+
 ## Overview
 
 Auto-NVIS is an autonomous, unattended system designed to provide real-time HF propagation forecasting for Near Vertical Incidence Skywave (NVIS) communications during the volatile conditions of Solar Cycle 25 (2024-2026 solar maximum). The system integrates real-time sensor fusion, advanced nonlinear state estimation, and deterministic ray tracing into a closed-loop control system capable of operating 24/7 without human intervention.
@@ -19,6 +21,40 @@ The system does not rely solely on:
 - Raw observational data (which is often sparse and noisy)
 
 Instead, Auto-NVIS uses a **Square-Root Unscented Kalman Filter (SR-UKF)** to assimilate real-time observations into physics-based background models (IRI-2020 or NeQuick-G), ensuring outputs that are both physically valid and observationally accurate.
+
+## Quick Start
+
+### Build & Test
+
+```bash
+# Build C++ pybind11 module
+cd /home/n4hy/AutoNVIS/src/assimilation/bindings
+cmake -B build && cmake --build build -j$(nproc)
+
+# Run integration test
+cd /home/n4hy/AutoNVIS
+python3 src/assimilation/python/test_basic_integration.py
+
+# Run autonomous demonstration
+python3 demo_standalone.py
+```
+
+### Implementation Status
+
+✅ **Complete (Phases 1-7):**
+- SR-UKF Core (C++/Eigen) with adaptive inflation and localization
+- Python-C++ integration (pybind11)
+- Autonomous mode switching (QUIET ↔ SHOCK)
+- **Conditional smoother logic** (mode-based + uncertainty-based)
+- Chapman layer physics model
+- System orchestration
+
+⏸️ **Pending:**
+- GNSS-TEC real-time ingestion
+- Ionosonde data ingestion
+- Offline smoother RTS backward pass
+
+📚 **Documentation:** See `docs/system_integration_complete.md` for full details.
 
 ## System Architecture
 

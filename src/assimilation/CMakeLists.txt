@@ -84,6 +84,14 @@ add_executable(test_sr_ukf tests/test_sr_ukf.cpp)
 target_link_libraries(test_sr_ukf autonvis_assimilation)
 add_test(NAME SRUKFTest COMMAND test_sr_ukf)
 
+# Localization demo (not a test, just demonstration)
+add_executable(demo_localization tests/demo_localization.cpp)
+target_link_libraries(demo_localization autonvis_assimilation)
+
+# Phase 1 validation suite
+add_executable(validation_phase1 tests/validation_phase1.cpp)
+target_link_libraries(validation_phase1 autonvis_assimilation)
+
 # Installation
 install(TARGETS assimilation_service DESTINATION bin)
 install(TARGETS autonvis_assimilation DESTINATION lib)

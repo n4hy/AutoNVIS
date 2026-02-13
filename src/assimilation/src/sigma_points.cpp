@@ -101,10 +101,32 @@ Eigen::MatrixXd SigmaPointGenerator::compute_sqrt_cov(
         P += weights(i) * dev * dev.transpose();
     }
 
+    // Add small regularization to ensure positive definiteness
+    // (numerical issues can cause near-zero or slightly negative eigenvalues)
+    const double regularization = 1e-10;
+    P += regularization * Eigen::MatrixXd::Identity(dim, dim);
+
     // Cholesky decomposition to get sqrt covariance (lower triangular)
     Eigen::LLT<Eigen::MatrixXd> llt(P);
     if (llt.info() != Eigen::Success) {
-        throw std::runtime_error("compute_sqrt_cov: Cholesky decomposition failed");
+        // If Cholesky still fails, use eigendecomposition to project to PSD
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigen_solver(P);
+        if (eigen_solver.info() != Eigen::Success) {
+            throw std::runtime_error("compute_sqrt_cov: Both Cholesky and eigen decomposition failed");
+        }
+
+        // Clamp negative eigenvalues to small positive value
+        Eigen::VectorXd eigenvalues = eigen_solver.eigenvalues();
+        for (int i = 0; i < eigenvalues.size(); ++i) {
+            if (eigenvalues(i) < 1e-12) {
+                eigenvalues(i) = 1e-12;
+            }
+        }
+
+        // Reconstruct: P = V * Lambda * V^T, S = V * sqrt(Lambda)
+        Eigen::MatrixXd V = eigen_solver.eigenvectors();
+        Eigen::MatrixXd sqrt_Lambda = eigenvalues.cwiseSqrt().asDiagonal();
+        return V * sqrt_Lambda;
     }
 
     Eigen::MatrixXd S = Eigen::MatrixXd(llt.matrixL());
