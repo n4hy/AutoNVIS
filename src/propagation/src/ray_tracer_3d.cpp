@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <fstream>
+#include <iostream>
 
 namespace autonvis {
 namespace propagation {
@@ -465,17 +466,21 @@ Eigen::VectorXd RayTracer3D::haselgrove_equations(
     double alt = state(2);
     Eigen::Vector3d k(state(3), state(4), state(5));
 
-    // Get electron density gradient
+    // Get electron density and gradient
+    double ne = iono_grid_->electron_density(lat, lon, alt);
     Eigen::Vector3d grad_ne = iono_grid_->electron_density_gradient(lat, lon, alt);
 
-    // Get electron density
-    double ne = iono_grid_->electron_density(lat, lon, alt);
+    // Safety check: minimum electron density to avoid division by zero
+    ne = std::max(ne, 1e6);  // Minimum 1e6 el/m³
 
     // Refractive index and its gradient
     // For simplified version, assume ∇n ≈ ∇ne / (2*ne)
     double f_p = plasma_frequency_hz(ne);
     double X = (f_p / freq_hz) * (f_p / freq_hz);
-    double n = std::sqrt(1.0 - X);
+    double n = std::sqrt(std::max(0.0, 1.0 - X));  // Ensure non-negative
+
+    // Safety check: avoid division by near-zero refractive index
+    n = std::max(n, 0.01);
 
     Eigen::Vector3d grad_n = grad_ne / (2.0 * ne * n);
 
@@ -503,35 +508,59 @@ RayState RayTracer3D::integrate_step(
     double freq_hz,
     double& step_size)
 {
-    // RK45 (Dormand-Prince) adaptive step integrator
+    // RK45 (Dormand-Prince) adaptive step integrator with iteration instead of recursion
 
     Eigen::VectorXd y(6);
     y << state.position, state.wave_normal;
 
-    // RK45 coefficients
-    auto k1 = haselgrove_equations(y, freq_hz);
-    auto k2 = haselgrove_equations(y + step_size * 0.2 * k1, freq_hz);
-    auto k3 = haselgrove_equations(y + step_size * (0.075 * k1 + 0.225 * k2), freq_hz);
-    auto k4 = haselgrove_equations(y + step_size * (0.3 * k1 - 0.9 * k2 + 1.2 * k3), freq_hz);
-    auto k5 = haselgrove_equations(y + step_size * (-11.0/54.0 * k1 + 2.5 * k2 - 70.0/27.0 * k3 + 35.0/27.0 * k4), freq_hz);
-    auto k6 = haselgrove_equations(y + step_size * (1631.0/55296.0 * k1 + 175.0/512.0 * k2 + 575.0/13824.0 * k3 + 44275.0/110592.0 * k4 + 253.0/4096.0 * k5), freq_hz);
+    Eigen::VectorXd y_new, y_4th;
+    double error = 0.0;
+    int retry_count = 0;
+    const int max_retries = 20;  // Prevent infinite loop
 
-    // 5th order solution
-    Eigen::VectorXd y_new = y + step_size * (37.0/378.0 * k1 + 250.0/621.0 * k3 + 125.0/594.0 * k4 + 512.0/1771.0 * k6);
+    // Iterate until acceptable error or max retries
+    while (retry_count < max_retries) {
+        // RK45 coefficients
+        auto k1 = haselgrove_equations(y, freq_hz);
+        auto k2 = haselgrove_equations(y + step_size * 0.2 * k1, freq_hz);
+        auto k3 = haselgrove_equations(y + step_size * (0.075 * k1 + 0.225 * k2), freq_hz);
+        auto k4 = haselgrove_equations(y + step_size * (0.3 * k1 - 0.9 * k2 + 1.2 * k3), freq_hz);
+        auto k5 = haselgrove_equations(y + step_size * (-11.0/54.0 * k1 + 2.5 * k2 - 70.0/27.0 * k3 + 35.0/27.0 * k4), freq_hz);
+        auto k6 = haselgrove_equations(y + step_size * (1631.0/55296.0 * k1 + 175.0/512.0 * k2 + 575.0/13824.0 * k3 + 44275.0/110592.0 * k4 + 253.0/4096.0 * k5), freq_hz);
 
-    // 4th order solution for error estimate
-    Eigen::VectorXd y_4th = y + step_size * (2825.0/27648.0 * k1 + 18575.0/48384.0 * k3 + 13525.0/55296.0 * k4 + 277.0/14336.0 * k5 + 0.25 * k6);
+        // 5th order solution
+        y_new = y + step_size * (37.0/378.0 * k1 + 250.0/621.0 * k3 + 125.0/594.0 * k4 + 512.0/1771.0 * k6);
 
-    // Error estimate
-    double error = (y_new - y_4th).norm();
+        // 4th order solution for error estimate
+        y_4th = y + step_size * (2825.0/27648.0 * k1 + 18575.0/48384.0 * k3 + 13525.0/55296.0 * k4 + 277.0/14336.0 * k5 + 0.25 * k6);
 
-    // Adapt step size
-    if (error > config_.tolerance) {
+        // Error estimate
+        error = (y_new - y_4th).norm();
+
+        // Check if error is acceptable or NaN
+        if (!std::isfinite(error) || error <= config_.tolerance) {
+            break;
+        }
+
+        // Reduce step size and retry
         step_size *= 0.5;
         step_size = std::max(step_size, config_.min_step_km);
-        return integrate_step(state, freq_hz, step_size);  // Retry with smaller step
-    } else {
+        retry_count++;
+
+        // If we hit minimum step size, accept the result
+        if (step_size <= config_.min_step_km) {
+            break;
+        }
+    }
+
+    // Increase step size for next iteration if error was small
+    if (std::isfinite(error) && error < config_.tolerance * 0.5) {
         step_size = std::min(step_size * 1.5, config_.max_step_km);
+    }
+
+    // Safety check: ensure step_size is finite and positive
+    if (!std::isfinite(step_size) || step_size <= 0.0) {
+        step_size = config_.initial_step_km;
     }
 
     // Update state

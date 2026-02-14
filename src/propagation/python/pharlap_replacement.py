@@ -94,9 +94,14 @@ class RayTracer:
 
         # Default ray tracing configuration
         self.config = raytracer.RayTracingConfig()
-        self.config.tolerance = 1e-7
-        self.config.max_path_length_km = 5000.0  # NVIS range
-        self.config.initial_step_km = 0.5
+        # Moderately optimized parameters (2026-02-13)
+        # Conservative to avoid stack overflow from recursive integrate_step
+        self.config.tolerance = 1e-6              # Slightly relaxed from 1e-7
+        self.config.initial_step_km = 1.0         # Moderate increase from 0.5
+        self.config.min_step_km = 0.05            # Slight increase from 0.01
+        self.config.max_step_km = 20.0            # Increased from 10.0
+        self.config.max_path_length_km = 5000.0   # NVIS range
+        self.config.max_steps = 50000             # Safety limit
         self.config.calculate_absorption = False  # TODO: Fix D-region model
         self.config.mode = raytracer.Mode.O_MODE  # O-mode default for NVIS
 
