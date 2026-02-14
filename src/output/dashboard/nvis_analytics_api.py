@@ -360,7 +360,8 @@ def create_app(
     lat_grid: np.ndarray,
     lon_grid: np.ndarray,
     alt_grid: np.ndarray,
-    mq_client: Optional[MessageQueueClient] = None
+    mq_client: Optional[MessageQueueClient] = None,
+    subscribers: Optional[dict] = None
 ) -> FastAPI:
     """
     Create FastAPI application
@@ -370,18 +371,45 @@ def create_app(
         lon_grid: Longitude grid
         alt_grid: Altitude grid
         mq_client: Message queue client
+        subscribers: Dictionary with subscriber instances and dashboard state
 
     Returns:
         FastAPI app instance
     """
     app = FastAPI(
-        title="NVIS Analytics Dashboard",
-        description="Real-time analytics and visualization for NVIS sounder network",
-        version="1.0.0"
+        title="AutoNVIS Dashboard",
+        description="Real-time ionospheric monitoring and NVIS propagation visualization",
+        version="2.0.0"
     )
 
-    # Initialize API backend
+    # Initialize legacy API backend
     api_backend = NVISAnalyticsAPI(lat_grid, lon_grid, alt_grid, mq_client)
+
+    # Setup new API routers if subscribers are available
+    if subscribers:
+        from .backend.ionosphere_api import create_ionosphere_routes
+        from .backend.propagation_api import create_propagation_routes
+        from .backend.spaceweather_api import create_spaceweather_routes
+        from .backend.control_api import create_control_routes
+
+        dashboard_state = subscribers.get('state')
+
+        # Include new API routers
+        ionosphere_router = create_ionosphere_routes(dashboard_state)
+        propagation_router = create_propagation_routes(dashboard_state)
+        spaceweather_router = create_spaceweather_routes(dashboard_state)
+        control_router = create_control_routes(dashboard_state, mq_client)
+
+        app.include_router(ionosphere_router)
+        app.include_router(propagation_router)
+        app.include_router(spaceweather_router)
+        app.include_router(control_router)
+
+        # Set WebSocket broadcast callbacks for all subscribers
+        for subscriber_name in ['grid', 'propagation', 'spaceweather', 'observation', 'health']:
+            subscriber = subscribers.get(subscriber_name)
+            if subscriber:
+                subscriber.ws_broadcast = api_backend.ws_manager.broadcast
 
     # Setup templates and static files
     base_path = Path(__file__).parent
@@ -390,9 +418,38 @@ def create_app(
 
     # Routes
     @app.get("/", response_class=HTMLResponse)
-    async def dashboard(request: Request):
-        """Main dashboard page"""
+    async def overview(request: Request):
+        """Overview dashboard page (main entry point)"""
+        if subscribers:
+            return templates.TemplateResponse("overview.html", {"request": request})
+        else:
+            # Fallback to legacy dashboard if no subscribers
+            return templates.TemplateResponse("dashboard.html", {"request": request})
+
+    @app.get("/network", response_class=HTMLResponse)
+    async def network_view(request: Request):
+        """NVIS network analysis page (legacy dashboard)"""
         return templates.TemplateResponse("dashboard.html", {"request": request})
+
+    @app.get("/ionosphere", response_class=HTMLResponse)
+    async def ionosphere_view(request: Request):
+        """Ionosphere visualization page"""
+        return templates.TemplateResponse("ionosphere.html", {"request": request})
+
+    @app.get("/propagation", response_class=HTMLResponse)
+    async def propagation_view(request: Request):
+        """Propagation prediction page"""
+        return templates.TemplateResponse("propagation.html", {"request": request})
+
+    @app.get("/spaceweather", response_class=HTMLResponse)
+    async def spaceweather_view(request: Request):
+        """Space weather monitoring page"""
+        return templates.TemplateResponse("spaceweather.html", {"request": request})
+
+    @app.get("/control", response_class=HTMLResponse)
+    async def control_view(request: Request):
+        """System control page"""
+        return templates.TemplateResponse("control.html", {"request": request})
 
     @app.get("/api/nvis/sounders")
     async def list_sounders():

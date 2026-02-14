@@ -1,0 +1,110 @@
+/**
+ * Space Weather View Styles
+ */
+
+.gauge-card {
+    text-align: center;
+    padding: 15px;
+    background: var(--background-color);
+    border-radius: 4px;
+}
+
+.gauge-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 5px;
+}
+
+.gauge-label {
+    font-size: 14px;
+    color: var(--text-color);
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.gauge-range {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.timeline {
+    position: relative;
+    padding-left: 30px;
+}
+
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border-color);
+}
+
+.timeline-item {
+    position: relative;
+    margin-bottom: 20px;
+}
+
+.timeline-marker {
+    position: absolute;
+    left: -26px;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 3px solid white;
+    box-shadow: 0 0 0 2px var(--border-color);
+}
+
+.timeline-content {
+    padding: 10px 15px;
+    background: var(--background-color);
+    border-radius: 4px;
+}
+
+.timeline-time {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 5px;
+}
+
+.timeline-mode {
+    margin-bottom: 5px;
+}
+
+.timeline-reason {
+    font-size: 13px;
+    color: var(--text-color);
+    font-style: italic;
+}
+
+.alerts-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.alert-item {
+    padding: 12px;
+    margin-bottom: 10px;
+    background: var(--background-color);
+    border-left: 4px solid var(--primary-color);
+    border-radius: 4px;
+}
+
+.alert-severity {
+    margin-bottom: 5px;
+}
+
+.alert-message {
+    font-size: 14px;
+    color: var(--text-color);
+    margin-bottom: 5px;
+}
+
+.alert-time {
+    font-size: 11px;
+    color: var(--text-secondary);
+}

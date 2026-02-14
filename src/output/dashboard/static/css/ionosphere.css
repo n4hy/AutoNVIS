@@ -1,0 +1,31 @@
+/**
+ * Ionosphere View Styles
+ */
+
+.controls-panel input[type="number"] {
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.controls-panel input[type="range"] {
+    width: 300px;
+    margin: 0 15px;
+}
+
+#altitude-value {
+    display: inline-block;
+    min-width: 50px;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.plot-container {
+    position: relative;
+}
+
+/* Hover tooltips enhancement */
+.hoverlayer .hovertext {
+    font-family: 'Segoe UI', sans-serif !important;
+}

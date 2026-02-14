@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}System Control - AutoNVIS Dashboard{% endblock %}
+
+{% block nav_control %}active{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/controls.css">
+{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>System Control</h1>
+    <p>Service management, data source control, and filter configuration</p>
+</div>
+
+<!-- System Health Overview -->
+<div class="grid-4col">
+    <div class="stat-card">
+        <div class="stat-value" id="services-running">--</div>
+        <div class="stat-label">Services Running</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="total-observations">--</div>
+        <div class="stat-label">Total Observations</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="grids-received">--</div>
+        <div class="stat-label">Grids Received</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="system-health">--</div>
+        <div class="stat-label">System Health</div>
+    </div>
+</div>
+
+<!-- Filter Control -->
+<div class="card">
+    <h2 class="card-title">Filter Control</h2>
+    <div class="grid-2col">
+        <div class="control-section">
+            <h3>Manual Actions</h3>
+            <button class="button button-success" onclick="triggerFilterCycle()">
+                🔄 Trigger Filter Cycle
+            </button>
+            <p class="help-text">Manually initiate a filter update cycle</p>
+
+            <div style="margin-top: 20px;">
+                <label>
+                    <input type="checkbox" id="force-cycle"> Force cycle (skip timing checks)
+                </label>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <h3>Mode Control</h3>
+            <div class="button-group">
+                <button class="button" onclick="switchMode('QUIET')">
+                    Set QUIET Mode
+                </button>
+                <button class="button button-warning" onclick="switchMode('SHOCK')">
+                    Set SHOCK Mode
+                </button>
+            </div>
+            <p class="help-text">Manually override autonomous mode</p>
+        </div>
+    </div>
+
+    <div class="control-section" style="margin-top: 20px;">
+        <h3>Filter Parameters</h3>
+        <div id="filter-parameters">
+            <div class="loading-spinner">Loading filter metrics...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Service Management -->
+<div class="card">
+    <h2 class="card-title">Service Management</h2>
+    <div id="services-table">
+        <div class="loading-spinner">Loading services...</div>
+    </div>
+</div>
+
+<!-- Data Sources -->
+<div class="card">
+    <h2 class="card-title">Data Source Control</h2>
+    <div class="grid-3col">
+        <div class="source-card">
+            <h3>GNSS TEC</h3>
+            <div id="gnss-status" class="source-status">--</div>
+            <button class="button button-secondary" onclick="toggleDataSource('gnss_tec')">
+                Toggle
+            </button>
+        </div>
+        <div class="source-card">
+            <h3>Ionosonde</h3>
+            <div id="ionosonde-status" class="source-status">--</div>
+            <button class="button button-secondary" onclick="toggleDataSource('ionosonde')">
+                Toggle
+            </button>
+        </div>
+        <div class="source-card">
+            <h3>NVIS Sounders</h3>
+            <div id="nvis-status" class="source-status">--</div>
+            <button class="button button-secondary" onclick="toggleDataSource('nvis_sounder')">
+                Toggle
+            </button>
+        </div>
+        <div class="source-card">
+            <h3>GOES X-Ray</h3>
+            <div id="xray-status" class="source-status">--</div>
+            <button class="button button-secondary" onclick="toggleDataSource('goes_xray')">
+                Toggle
+            </button>
+        </div>
+        <div class="source-card">
+            <h3>ACE Solar Wind</h3>
+            <div id="sw-status" class="source-status">--</div>
+            <button class="button button-secondary" onclick="toggleDataSource('ace_solar_wind')">
+                Toggle
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Observation Statistics -->
+<div class="grid-2col">
+    <div class="card">
+        <h2 class="card-title">Observation Counts</h2>
+        <div id="observation-counts">
+            <div class="loading-spinner">Loading observation counts...</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">Recent Observations</h2>
+        <div class="controls-panel">
+            <label for="obs-type-filter">Type:</label>
+            <select id="obs-type-filter" onchange="loadRecentObservations()">
+                <option value="">All</option>
+                <option value="gnss_tec">GNSS TEC</option>
+                <option value="ionosonde">Ionosonde</option>
+                <option value="nvis_sounder">NVIS Sounder</option>
+            </select>
+        </div>
+        <div id="recent-observations">
+            <div class="loading-spinner">Loading observations...</div>
+        </div>
+    </div>
+</div>
+
+<!-- System Statistics -->
+<div class="card">
+    <h2 class="card-title">System Statistics</h2>
+    <div id="system-statistics">
+        <div class="loading-spinner">Loading statistics...</div>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div id="confirmation-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3 id="modal-title">Confirm Action</h3>
+        <p id="modal-message">Are you sure?</p>
+        <div class="button-group" style="margin-top: 20px;">
+            <button class="button" id="modal-confirm">Confirm</button>
+            <button class="button button-secondary" onclick="closeModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/control.js"></script>
+{% endblock %}

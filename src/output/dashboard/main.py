@@ -17,6 +17,14 @@ from src.common.config import get_config
 from src.common.message_queue import MessageQueueClient
 from src.output.dashboard.nvis_analytics_api import create_app
 from src.common.logging_config import ServiceLogger
+from src.output.dashboard.backend.state_manager import DashboardState
+from src.output.dashboard.backend.subscribers import (
+    GridDataSubscriber,
+    PropagationSubscriber,
+    SpaceWeatherSubscriber,
+    ObservationSubscriber,
+    SystemHealthSubscriber
+)
 
 
 def main():
@@ -42,6 +50,8 @@ def main():
 
     # Create message queue client (optional)
     mq_client = None
+    subscribers = None
+
     if not args.no_mq:
         try:
             mq_client = MessageQueueClient(
@@ -51,12 +61,43 @@ def main():
                 password=config.services.rabbitmq_password
             )
             logger.info("Connected to RabbitMQ")
+
+            # Initialize dashboard state
+            dashboard_state = DashboardState(retention_hours=24)
+            logger.info("Dashboard state manager initialized")
+
+            # Initialize subscribers
+            # Note: WebSocket broadcast callback will be set after app creation
+            grid_subscriber = GridDataSubscriber(mq_client, dashboard_state, None)
+            propagation_subscriber = PropagationSubscriber(mq_client, dashboard_state, None)
+            spaceweather_subscriber = SpaceWeatherSubscriber(mq_client, dashboard_state, None)
+            observation_subscriber = ObservationSubscriber(mq_client, dashboard_state, None)
+            health_subscriber = SystemHealthSubscriber(mq_client, dashboard_state, None)
+
+            subscribers = {
+                'grid': grid_subscriber,
+                'propagation': propagation_subscriber,
+                'spaceweather': spaceweather_subscriber,
+                'observation': observation_subscriber,
+                'health': health_subscriber,
+                'state': dashboard_state
+            }
+
+            # Start all subscribers
+            logger.info("Starting data subscribers...")
+            grid_subscriber.start()
+            propagation_subscriber.start()
+            spaceweather_subscriber.start()
+            observation_subscriber.start()
+            health_subscriber.start()
+            logger.info("All subscribers started successfully")
+
         except Exception as e:
             logger.warning(f"Could not connect to RabbitMQ: {e}")
             logger.warning("Running without real-time updates")
 
     # Create FastAPI app
-    app = create_app(lat_grid, lon_grid, alt_grid, mq_client)
+    app = create_app(lat_grid, lon_grid, alt_grid, mq_client, subscribers)
 
     logger.info(f"Starting dashboard on {args.host}:{args.port}")
     logger.info(f"Open http://{args.host}:{args.port} in your browser")

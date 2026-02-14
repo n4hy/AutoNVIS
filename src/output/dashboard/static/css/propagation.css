@@ -1,0 +1,46 @@
+/**
+ * Propagation View Styles
+ */
+
+.luf-card .stat-value {
+    color: #F44336;
+}
+
+.muf-card .stat-value {
+    color: #4CAF50;
+}
+
+.fot-card .stat-value {
+    color: #2196F3;
+}
+
+.stat-subtitle {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 5px;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+#coverage-map {
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.coverage-info {
+    font-size: 12px;
+}
+
+.controls-panel select {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 14px;
+    background: white;
+    cursor: pointer;
+}
+
+.controls-panel select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}

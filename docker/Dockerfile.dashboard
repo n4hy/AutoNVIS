@@ -1,39 +1,41 @@
-# Dockerfile for NVIS Analytics Dashboard
-FROM python:3.11-slim
+# Dockerfile for AutoNVIS Dashboard
+FROM python:3.10-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    libeigen3-dev \
+    gcc \
+    g++ \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Create app directory
 WORKDIR /app
 
-# Copy requirements
+# Copy requirements first (for caching)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
+# Install Python dependencies
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
+
+# Copy application code
 COPY src/ ./src/
 COPY config/ ./config/
 
-# Create non-root user
-RUN useradd -m -u 1000 dashboard && \
-    chown -R dashboard:dashboard /app
+# Create log directory
+RUN mkdir -p /var/log/autonvis
 
-USER dashboard
-
-# Set Python path
-ENV PYTHONPATH=/app
-
-# Expose dashboard port
+# Expose port
 EXPOSE 8080
 
-# Healthcheck
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()" || exit 1
+    CMD curl -f http://localhost:8080/api/control/health/check || exit 1
 
-# Start dashboard
-CMD ["python", "-m", "src.output.dashboard.main", "--host", "0.0.0.0", "--port", "8080", "--config", "config/production.yml"]
+# Run dashboard
+CMD ["python", "-m", "src.output.dashboard.main", "--host", "0.0.0.0", "--port", "8080"]

@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # AutoNVIS Dashboard
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: autonvis-dashboard
+    ports:
+      - "8080:8080"
+    environment:
+      - AUTONVIS_CONFIG=/app/config/production.yml
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./config:/app/config:ro
+      - dashboard_logs:/var/log/autonvis
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+    networks:
+      - autonvis-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/control/health/check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3.11-management-alpine
+    container_name: autonvis-rabbitmq
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-autonvis}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-change_me_in_production}
+      - RABBITMQ_DEFAULT_VHOST=autonvis
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    networks:
+      - autonvis-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: autonvis-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - dashboard
+    restart: unless-stopped
+    networks:
+      - autonvis-network
+
+volumes:
+  rabbitmq_data:
+    driver: local
+  dashboard_logs:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  autonvis-network:
+    driver: bridge

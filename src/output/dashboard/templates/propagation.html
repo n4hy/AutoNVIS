@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Propagation - AutoNVIS Dashboard{% endblock %}
+
+{% block nav_propagation %}active{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/propagation.css">
+{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>Propagation Prediction</h1>
+    <p>LUF/MUF/FOT frequency plans, coverage maps, and time-series analysis</p>
+</div>
+
+<!-- Current Frequency Plan -->
+<div class="grid-3col">
+    <div class="stat-card luf-card">
+        <div class="stat-value" id="current-luf">--</div>
+        <div class="stat-label">LUF (MHz)</div>
+        <div class="stat-subtitle">Lowest Usable Frequency</div>
+    </div>
+    <div class="stat-card muf-card">
+        <div class="stat-value" id="current-muf">--</div>
+        <div class="stat-label">MUF (MHz)</div>
+        <div class="stat-subtitle">Maximum Usable Frequency</div>
+    </div>
+    <div class="stat-card fot-card">
+        <div class="stat-value" id="current-fot">--</div>
+        <div class="stat-label">FOT (MHz)</div>
+        <div class="stat-subtitle">Frequency of Optimum Traffic</div>
+    </div>
+</div>
+
+<!-- Time Series -->
+<div class="card">
+    <h2 class="card-title">LUF/MUF/FOT History (24 hours)</h2>
+    <div class="controls-panel">
+        <label for="history-hours">Time Range:</label>
+        <select id="history-hours" onchange="updateTimeSeries()">
+            <option value="6">6 hours</option>
+            <option value="12">12 hours</option>
+            <option value="24" selected>24 hours</option>
+            <option value="48">48 hours</option>
+        </select>
+    </div>
+    <div id="frequency-history-plot" class="plot-container plot-container-large"></div>
+</div>
+
+<!-- Coverage Map and Statistics -->
+<div class="grid-2col">
+    <div class="card">
+        <h2 class="card-title">Coverage Map</h2>
+        <p class="card-subtitle">Geographic coverage footprint</p>
+        <div id="coverage-map" style="height: 400px; background: #f5f5f5;"></div>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">Propagation Statistics</h2>
+        <div id="prop-statistics">
+            <div class="loading-spinner">Loading statistics...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Frequency Plan Details -->
+<div class="card">
+    <h2 class="card-title">Latest Frequency Plan Details</h2>
+    <div id="frequency-plan-details">
+        <div class="loading-spinner">Loading frequency plan...</div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/propagation.js"></script>
+{% endblock %}

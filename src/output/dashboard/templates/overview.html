@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Overview - AutoNVIS Dashboard{% endblock %}
+
+{% block nav_overview %}active{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>AutoNVIS System Overview</h1>
+    <p>Real-time ionospheric monitoring and NVIS propagation prediction</p>
+</div>
+
+<!-- System Status Cards -->
+<div class="grid-4col">
+    <div class="stat-card">
+        <div class="stat-value" id="grid-age">--</div>
+        <div class="stat-label">Grid Age (min)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="obs-count">--</div>
+        <div class="stat-label">Observations (24h)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="current-mode">--</div>
+        <div class="stat-label">Autonomous Mode</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="xray-flux">--</div>
+        <div class="stat-label">X-Ray Flux</div>
+    </div>
+</div>
+
+<!-- Latest Grid Information -->
+<div class="card">
+    <h2 class="card-title">Latest Electron Density Grid</h2>
+    <div id="grid-info-content">
+        <div class="loading-spinner">Loading grid information...</div>
+    </div>
+</div>
+
+<!-- Propagation Summary -->
+<div class="grid-2col">
+    <div class="card">
+        <h2 class="card-title">Frequency Plan (LUF/MUF/FOT)</h2>
+        <div id="frequency-plan-content">
+            <div class="loading-spinner">Loading frequency plan...</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">Space Weather</h2>
+        <div id="spaceweather-content">
+            <div class="loading-spinner">Loading space weather...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Alerts -->
+<div class="card">
+    <h2 class="card-title">Recent Alerts</h2>
+    <div id="alerts-content">
+        <div class="loading-spinner">Loading alerts...</div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Load overview data
+    async function loadOverview() {
+        try {
+            // Load grid metadata
+            const metadata = await api.getGridMetadata();
+            document.getElementById('grid-age').textContent =
+                Math.round(metadata.age_seconds / 60);
+
+            const gridInfoContent = document.getElementById('grid-info-content');
+            gridInfoContent.innerHTML = `
+                <div class="grid-2col">
+                    <div>
+                        <strong>Cycle ID:</strong> ${metadata.cycle_id}<br>
+                        <strong>Quality:</strong> <span class="badge badge-success">${metadata.quality}</span><br>
+                        <strong>Grid Shape:</strong> ${metadata.shape.join(' × ')}<br>
+                        <strong>Timestamp:</strong> ${Utils.formatTimestamp(metadata.timestamp)}
+                    </div>
+                    <div>
+                        <strong>Ne Max:</strong> ${Utils.formatScientific(metadata.ne_max)} el/m³<br>
+                        <strong>Age:</strong> ${Utils.formatRelativeTime(new Date(Date.now() - metadata.age_seconds * 1000))}<br>
+                        <a href="/ionosphere" class="button" style="margin-top: 10px;">View Ionosphere →</a>
+                    </div>
+                </div>
+            `;
+
+            // Load frequency plan
+            const freqPlan = await api.getLatestFrequencyPlan();
+            const freqContent = document.getElementById('frequency-plan-content');
+            freqContent.innerHTML = `
+                <div style="text-align: center;">
+                    <div style="display: inline-block; margin: 10px 20px;">
+                        <div style="font-size: 28px; font-weight: bold; color: #F44336;">${freqPlan.luf_mhz ? freqPlan.luf_mhz.toFixed(2) : 'N/A'} MHz</div>
+                        <div style="color: #757575;">LUF</div>
+                    </div>
+                    <div style="display: inline-block; margin: 10px 20px;">
+                        <div style="font-size: 28px; font-weight: bold; color: #4CAF50;">${freqPlan.muf_mhz ? freqPlan.muf_mhz.toFixed(2) : 'N/A'} MHz</div>
+                        <div style="color: #757575;">MUF</div>
+                    </div>
+                    <div style="display: inline-block; margin: 10px 20px;">
+                        <div style="font-size: 28px; font-weight: bold; color: #2196F3;">${freqPlan.fot_mhz ? freqPlan.fot_mhz.toFixed(2) : 'N/A'} MHz</div>
+                        <div style="color: #757575;">FOT</div>
+                    </div>
+                </div>
+                <div style="text-align: center; margin-top: 15px;">
+                    <a href="/propagation" class="button">View Propagation →</a>
+                </div>
+            `;
+
+            // Load space weather
+            const xray = await api.getXRayLatest();
+            const mode = await api.getCurrentMode();
+
+            document.getElementById('current-mode').textContent = mode.mode;
+            document.getElementById('xray-flux').textContent = xray.flare_class + xray.flare_magnitude.toFixed(1);
+
+            const swContent = document.getElementById('spaceweather-content');
+            swContent.innerHTML = `
+                <div>
+                    <strong>X-Ray Flux:</strong> ${Utils.formatScientific(xray.flux_wm2)} W/m²<br>
+                    <strong>Flare Class:</strong> <span class="badge" style="background: ${Utils.getFlareColor(xray.flare_class)}; color: white;">${xray.flare_class}${xray.flare_magnitude.toFixed(1)}</span><br>
+                    <strong>Mode:</strong> <span class="badge ${mode.mode === 'QUIET' ? 'badge-success' : 'badge-warning'}">${mode.mode}</span><br>
+                    <strong>Timestamp:</strong> ${Utils.formatTimestamp(xray.timestamp)}
+                </div>
+                <div style="margin-top: 15px;">
+                    <a href="/spaceweather" class="button">View Space Weather →</a>
+                </div>
+            `;
+
+            // Load observation counts
+            const obsCounts = await api.getObservationCounts();
+            document.getElementById('obs-count').textContent = obsCounts.total || 0;
+
+            // Load recent alerts
+            const alerts = await api.getRecentAlerts(24);
+            const alertsContent = document.getElementById('alerts-content');
+
+            if (alerts.count === 0) {
+                alertsContent.innerHTML = '<p style="color: #757575; text-align: center;">No recent alerts</p>';
+            } else {
+                const alertsHTML = alerts.data.slice(0, 5).map(alert => `
+                    <div style="padding: 10px; margin-bottom: 10px; border-left: 4px solid ${Utils.getSeverityColor(alert.severity || 'info')}; background: #f5f5f5;">
+                        <strong>${alert.message || 'Alert'}</strong><br>
+                        <small style="color: #757575;">${Utils.formatTimestamp(alert.timestamp)}</small>
+                    </div>
+                `).join('');
+
+                alertsContent.innerHTML = alertsHTML;
+            }
+
+        } catch (error) {
+            console.error('Error loading overview:', error);
+            Utils.showNotification('Failed to load overview data', 'error');
+        }
+    }
+
+    // Load data on page load
+    loadOverview();
+
+    // Refresh every 30 seconds
+    setInterval(loadOverview, 30000);
+
+    // Real-time updates via WebSocket
+    ws.on('grid_update', () => {
+        loadOverview();
+    });
+
+    ws.on('frequency_plan_update', () => {
+        loadOverview();
+    });
+
+    ws.on('mode_change', () => {
+        loadOverview();
+    });
+
+    ws.on('alert', (data) => {
+        Utils.showNotification(data.message || 'New alert', data.severity || 'info');
+        loadOverview();
+    });
+</script>
+{% endblock %}

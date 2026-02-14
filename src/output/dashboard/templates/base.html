@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AutoNVIS Dashboard{% endblock %}</title>
+
+    <!-- Base CSS -->
+    <link rel="stylesheet" href="/static/css/base.css">
+    <link rel="stylesheet" href="/static/css/sidebar.css">
+    {% block extra_css %}{% endblock %}
+
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+    <!-- Leaflet.js for maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Chart.js for time series -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>AutoNVIS</h2>
+            <p>Ionospheric Monitoring</p>
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-section-title">Main</div>
+                <a href="/" class="nav-item {% block nav_overview %}{% endblock %}">
+                    <i>📊</i> Overview
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">Visualization</div>
+                <a href="/ionosphere" class="nav-item {% block nav_ionosphere %}{% endblock %}">
+                    <i>🌐</i> Ionosphere
+                </a>
+                <a href="/propagation" class="nav-item {% block nav_propagation %}{% endblock %}">
+                    <i>📡</i> Propagation
+                </a>
+                <a href="/spaceweather" class="nav-item {% block nav_spaceweather %}{% endblock %}">
+                    <i>☀️</i> Space Weather
+                </a>
+                <a href="/network" class="nav-item {% block nav_network %}{% endblock %}">
+                    <i>🗺️</i> NVIS Network
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">System</div>
+                <a href="/control" class="nav-item {% block nav_control %}{% endblock %}">
+                    <i>⚙️</i> Control
+                </a>
+            </div>
+        </nav>
+
+        <!-- Status indicators in sidebar -->
+        <div class="sidebar-status-card" id="sidebar-grid-status">
+            <div class="label">Latest Grid</div>
+            <div class="value" id="sidebar-grid-age">--</div>
+        </div>
+
+        <div class="sidebar-status-card" id="sidebar-mode-status">
+            <div class="label">Mode</div>
+            <div class="value" id="sidebar-mode">QUIET</div>
+        </div>
+
+        <div class="sidebar-footer">
+            <div class="connection-status">
+                <span class="status-indicator" id="ws-status"></span>
+                <span id="ws-status-text">Connecting...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- Sidebar toggle button for mobile -->
+    <button class="sidebar-toggle" id="sidebar-toggle">☰</button>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Common JavaScript -->
+    <script src="/static/js/common/utils.js"></script>
+    <script src="/static/js/common/api_client.js"></script>
+    <script src="/static/js/common/websocket_client.js"></script>
+
+    <!-- Sidebar functionality -->
+    <script>
+        // Mobile sidebar toggle
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+        sidebarToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+            sidebarOverlay.classList.toggle('open');
+        });
+
+        sidebarOverlay.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            sidebarOverlay.classList.remove('open');
+        });
+
+        // WebSocket status indicator
+        ws.on('_connect', () => {
+            const indicator = document.getElementById('ws-status');
+            const text = document.getElementById('ws-status-text');
+            indicator.classList.remove('disconnected');
+            text.textContent = 'Connected';
+        });
+
+        ws.on('_disconnect', () => {
+            const indicator = document.getElementById('ws-status');
+            const text = document.getElementById('ws-status-text');
+            indicator.classList.add('disconnected');
+            text.textContent = 'Disconnected';
+        });
+
+        // Update sidebar status from WebSocket
+        ws.on('grid_update', (data) => {
+            const ageElement = document.getElementById('sidebar-grid-age');
+            if (ageElement) {
+                ageElement.textContent = 'Just updated';
+                ageElement.className = 'value good';
+            }
+        });
+
+        ws.on('mode_change', (data) => {
+            const modeElement = document.getElementById('sidebar-mode');
+            if (modeElement && data.mode) {
+                modeElement.textContent = data.mode;
+                modeElement.className = data.mode === 'QUIET' ? 'value good' : 'value warning';
+            }
+        });
+
+        // Periodically update grid age
+        async function updateSidebarStatus() {
+            try {
+                const metadata = await api.getGridMetadata();
+                const ageElement = document.getElementById('sidebar-grid-age');
+                if (ageElement && metadata.age_seconds !== undefined) {
+                    ageElement.textContent = Utils.formatRelativeTime(
+                        new Date(Date.now() - metadata.age_seconds * 1000)
+                    );
+
+                    // Color based on age
+                    if (metadata.age_seconds < 600) {
+                        ageElement.className = 'value good';
+                    } else if (metadata.age_seconds < 1800) {
+                        ageElement.className = 'value warning';
+                    } else {
+                        ageElement.className = 'value error';
+                    }
+                }
+
+                const mode = await api.getCurrentMode();
+                const modeElement = document.getElementById('sidebar-mode');
+                if (modeElement && mode.mode) {
+                    modeElement.textContent = mode.mode;
+                    modeElement.className = mode.mode === 'QUIET' ? 'value good' : 'value warning';
+                }
+            } catch (error) {
+                console.error('Error updating sidebar status:', error);
+            }
+        }
+
+        // Update every 30 seconds
+        setInterval(updateSidebarStatus, 30000);
+        // Initial update after 1 second
+        setTimeout(updateSidebarStatus, 1000);
+    </script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

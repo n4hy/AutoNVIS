@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Ionosphere - AutoNVIS Dashboard{% endblock %}
+
+{% block nav_ionosphere %}active{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/ionosphere.css">
+{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>Ionosphere Visualization</h1>
+    <p>3D electron density grids, vertical profiles, and ionospheric parameters</p>
+</div>
+
+<!-- Grid Status -->
+<div class="grid-4col">
+    <div class="stat-card">
+        <div class="stat-value" id="grid-ne-max">--</div>
+        <div class="stat-label">Peak Ne (×10¹¹ el/m³)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="grid-quality">--</div>
+        <div class="stat-label">Grid Quality</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="grid-age">--</div>
+        <div class="stat-label">Grid Age</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="grid-obs-count">--</div>
+        <div class="stat-label">Observations Used</div>
+    </div>
+</div>
+
+<!-- Controls -->
+<div class="controls-panel">
+    <label for="altitude-slider">Altitude: <span id="altitude-value">300</span> km</label>
+    <input type="range" id="altitude-slider" min="60" max="600" value="300" step="10">
+
+    <label for="location-lat" style="margin-left: 30px;">Profile Location:</label>
+    <input type="number" id="location-lat" value="40.0" step="1" style="width: 80px;" placeholder="Lat">
+    <input type="number" id="location-lon" value="-105.0" step="1" style="width: 80px;" placeholder="Lon">
+    <button class="button" onclick="updateVerticalProfile()">Update Profile</button>
+
+    <button class="button button-secondary" onclick="refreshAllData()" style="float: right;">🔄 Refresh All</button>
+</div>
+
+<!-- Main Visualizations -->
+<div class="grid-2col">
+    <!-- Horizontal Slice -->
+    <div class="card">
+        <h2 class="card-title">Electron Density - Horizontal Slice</h2>
+        <p class="card-subtitle">2D Ne distribution at <span id="slice-altitude">300</span> km altitude</p>
+        <div id="ne-slice-plot" class="plot-container"></div>
+    </div>
+
+    <!-- Vertical Profile -->
+    <div class="card">
+        <h2 class="card-title">Electron Density - Vertical Profile</h2>
+        <p class="card-subtitle">Ne vs altitude at (<span id="profile-location">40.0°N, 105.0°W</span>)</p>
+        <div id="ne-profile-plot" class="plot-container"></div>
+    </div>
+</div>
+
+<!-- Parameter Maps -->
+<div class="grid-3col">
+    <!-- foF2 Map -->
+    <div class="card">
+        <h2 class="card-title">foF2 Map</h2>
+        <p class="card-subtitle">Critical Frequency (F2 layer)</p>
+        <div id="fof2-plot" class="plot-container" style="height: 350px;"></div>
+    </div>
+
+    <!-- hmF2 Map -->
+    <div class="card">
+        <h2 class="card-title">hmF2 Map</h2>
+        <p class="card-subtitle">F2 Peak Height</p>
+        <div id="hmf2-plot" class="plot-container" style="height: 350px;"></div>
+    </div>
+
+    <!-- TEC Map -->
+    <div class="card">
+        <h2 class="card-title">TEC Map</h2>
+        <p class="card-subtitle">Total Electron Content</p>
+        <div id="tec-plot" class="plot-container" style="height: 350px;"></div>
+    </div>
+</div>
+
+<!-- Statistics -->
+<div class="card">
+    <h2 class="card-title">Grid Statistics</h2>
+    <div id="grid-statistics">
+        <div class="loading-spinner">Loading statistics...</div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/ionosphere.js"></script>
+{% endblock %}

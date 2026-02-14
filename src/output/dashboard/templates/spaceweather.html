@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Space Weather - AutoNVIS Dashboard{% endblock %}
+
+{% block nav_spaceweather %}active{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/spaceweather.css">
+{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>Space Weather Monitoring</h1>
+    <p>X-ray flux, solar wind parameters, and autonomous mode tracking</p>
+</div>
+
+<!-- Current Status -->
+<div class="grid-4col">
+    <div class="stat-card">
+        <div class="stat-value" id="current-xray-class">--</div>
+        <div class="stat-label">X-Ray Flare Class</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="current-mode">--</div>
+        <div class="stat-label">Autonomous Mode</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="sw-speed">--</div>
+        <div class="stat-label">Solar Wind Speed (km/s)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="sw-bz">--</div>
+        <div class="stat-label">IMF Bz (nT)</div>
+    </div>
+</div>
+
+<!-- X-Ray Flux Chart -->
+<div class="card">
+    <h2 class="card-title">X-Ray Flux (0.1-0.8 nm)</h2>
+    <div class="controls-panel">
+        <label for="xray-hours">Time Range:</label>
+        <select id="xray-hours" onchange="updateXRayChart()">
+            <option value="6">6 hours</option>
+            <option value="12">12 hours</option>
+            <option value="24" selected>24 hours</option>
+            <option value="72">3 days</option>
+        </select>
+    </div>
+    <div id="xray-flux-plot" class="plot-container plot-container-large"></div>
+</div>
+
+<!-- Solar Wind and Mode -->
+<div class="grid-2col">
+    <!-- Solar Wind Parameters -->
+    <div class="card">
+        <h2 class="card-title">Solar Wind Parameters</h2>
+        <div id="solar-wind-gauges">
+            <div class="loading-spinner">Loading solar wind data...</div>
+        </div>
+    </div>
+
+    <!-- Mode History -->
+    <div class="card">
+        <h2 class="card-title">Autonomous Mode History</h2>
+        <div id="mode-timeline">
+            <div class="loading-spinner">Loading mode history...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Space Weather Statistics and Alerts -->
+<div class="grid-2col">
+    <!-- Statistics -->
+    <div class="card">
+        <h2 class="card-title">Space Weather Statistics (24h)</h2>
+        <div id="sw-statistics">
+            <div class="loading-spinner">Loading statistics...</div>
+        </div>
+    </div>
+
+    <!-- Recent Alerts -->
+    <div class="card">
+        <h2 class="card-title">Recent Alerts</h2>
+        <div class="controls-panel">
+            <label for="alert-filter">Filter:</label>
+            <select id="alert-filter" onchange="loadAlerts()">
+                <option value="">All</option>
+                <option value="critical">Critical</option>
+                <option value="error">Error</option>
+                <option value="warning">Warning</option>
+                <option value="info">Info</option>
+            </select>
+        </div>
+        <div id="alerts-feed">
+            <div class="loading-spinner">Loading alerts...</div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/spaceweather.js"></script>
+{% endblock %}
