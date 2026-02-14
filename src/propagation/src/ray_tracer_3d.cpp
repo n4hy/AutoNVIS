@@ -546,8 +546,8 @@ RayState RayTracer3D::integrate_step(
 }
 
 bool RayTracer3D::check_termination(const RayState& state, RayPath& path) {
-    // Check ground hit
-    if (state.position(2) <= config_.ground_altitude_km) {
+    // Check ground hit (allow starting exactly at ground level)
+    if (state.position(2) < config_.ground_altitude_km) {
         return true;
     }
 
@@ -573,9 +573,9 @@ bool RayTracer3D::check_termination(const RayState& state, RayPath& path) {
 
 double RayTracer3D::calculate_signal_strength(const RayPath& path) {
     // Free space path loss + absorption
-    if (path.positions.size() < 2) return -999.0;
+    if (path.positions.size() < 2 || path.path_lengths.empty()) return -999.0;
 
-    double distance_m = path.path_length * 1000.0;
+    double distance_m = path.path_lengths.back() * 1000.0;
 
     // Free space path loss (dB)
     // FSPL = 20*log10(4*pi*d/lambda)
@@ -583,7 +583,7 @@ double RayTracer3D::calculate_signal_strength(const RayPath& path) {
     double fspl_db = 20.0 * std::log10(4.0 * PI * distance_m / lambda_m);
 
     // Total loss
-    double total_loss_db = fspl_db + path.absorption_db.back();
+    double total_loss_db = fspl_db + (path.absorption_db.empty() ? 0.0 : path.absorption_db.back());
 
     // Assume 100W transmit power (50 dBm)
     double signal_strength_dbm = 50.0 - total_loss_db;

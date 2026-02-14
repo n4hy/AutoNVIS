@@ -29,13 +29,18 @@ import logging
 
 try:
     # Import C++ ray tracer module
-    from . import raytracer
+    try:
+        from . import raytracer
+    except ImportError:
+        # Fall back to direct import if not in package context
+        import raytracer
 except ImportError:
     # If not built yet, provide helpful error
     raise ImportError(
         "Ray tracer C++ module not found. Please build it first:\n"
         "  cd src/propagation\n"
         "  cmake -B build && cmake --build build -j$(nproc)\n"
+        "  cmake --build build --target install\n"
     )
 
 
@@ -92,7 +97,7 @@ class RayTracer:
         self.config.tolerance = 1e-7
         self.config.max_path_length_km = 5000.0  # NVIS range
         self.config.initial_step_km = 0.5
-        self.config.calculate_absorption = True
+        self.config.calculate_absorption = False  # TODO: Fix D-region model
         self.config.mode = raytracer.Mode.O_MODE  # O-mode default for NVIS
 
         # Create C++ ray tracer
