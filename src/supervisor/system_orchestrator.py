@@ -7,11 +7,12 @@ Triggers data assimilation, ray tracing, and output generation in sequence.
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import sys
 from pathlib import Path
+import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -80,6 +81,10 @@ class SystemOrchestrator:
         self.failed_cycles = 0
         self.total_cycle_time = 0.0
 
+        # Propagation service (initialized on demand)
+        self.propagation_service = None
+        self._ne_grid_cache = None  # Cache for latest Ne grid from filter
+
         self.logger.info(
             f"Orchestrator initialized: cycle={self.cycle_interval}s, "
             f"max_duration={self.max_cycle_duration}s"
@@ -126,7 +131,10 @@ class SystemOrchestrator:
 
     async def trigger_propagation(self) -> bool:
         """
-        Trigger ray tracing with updated electron density grid
+        Trigger ray tracing with updated electron density grid.
+
+        Integrates native C++ ray tracer with SR-UKF filter output to
+        calculate LUF/MUF and publish propagation products to RabbitMQ.
 
         Returns:
             True if successful
@@ -135,9 +143,92 @@ class SystemOrchestrator:
         self.current_phase = CyclePhase.PROPAGATION
 
         try:
-            # TODO: Implement propagation trigger
-            # For now, simulate
-            await asyncio.sleep(3)
+            config = get_config()
+
+            # Import propagation service (deferred to avoid circular dependencies)
+            from src.propagation.services import PropagationService
+
+            # Initialize propagation service if not already done
+            if self.propagation_service is None:
+                self.logger.info("Initializing PropagationService...")
+                self.propagation_service = PropagationService(
+                    tx_lat=config.propagation.tx_lat,
+                    tx_lon=config.propagation.tx_lon,
+                    tx_alt=config.propagation.tx_alt_km,
+                    freq_min=config.propagation.freq_min_mhz,
+                    freq_max=config.propagation.freq_max_mhz,
+                    freq_step=config.propagation.freq_step_mhz,
+                    elevation_min=config.propagation.elevation_min_deg,
+                    elevation_max=config.propagation.elevation_max_deg,
+                    elevation_step=config.propagation.elevation_step_deg,
+                    azimuth_step=config.propagation.azimuth_step_deg,
+                    absorption_threshold_db=config.propagation.absorption_threshold_db,
+                    snr_threshold_db=config.propagation.snr_threshold_db
+                )
+
+            # Get electron density grid from filter
+            # NOTE: In full implementation, this would come from the assimilation service
+            # via gRPC or message queue. For now, we create a placeholder.
+            ne_grid, lat_grid, lon_grid, alt_grid, xray_flux = await self._get_ionospheric_grid()
+
+            # Initialize ray tracer with current ionospheric grid
+            self.logger.info("Initializing ray tracer with updated ionospheric grid...")
+            self.propagation_service.initialize_ray_tracer(
+                ne_grid=ne_grid,
+                lat_grid=lat_grid,
+                lon_grid=lon_grid,
+                alt_grid=alt_grid,
+                xray_flux=xray_flux
+            )
+
+            # Calculate LUF/MUF products
+            self.logger.info("Calculating LUF/MUF coverage...")
+            luf_muf_products = self.propagation_service.calculate_luf_muf()
+
+            # Log results
+            self.logger.info(
+                f"LUF/MUF calculated: "
+                f"LUF={luf_muf_products['luf_mhz']:.2f} MHz, "
+                f"MUF={luf_muf_products['muf_mhz']:.2f} MHz, "
+                f"FOT={luf_muf_products['fot_mhz']:.2f} MHz, "
+                f"Blackout={luf_muf_products['blackout']}"
+            )
+
+            # Publish to message queue
+            if self.mq_client:
+                self.logger.info("Publishing propagation products to message queue...")
+
+                # Add cycle metadata
+                luf_muf_products['cycle_id'] = f"cycle_{self.cycle_count:04d}"
+
+                await asyncio.to_thread(
+                    self.mq_client.publish,
+                    topic=Topics.OUT_FREQUENCY_PLAN,
+                    data=luf_muf_products,
+                    source="propagation"
+                )
+
+                self.logger.info("Propagation products published successfully")
+            else:
+                self.logger.warning("No message queue client - skipping publication")
+
+            # Record metrics
+            if hasattr(self, 'metrics'):
+                self.metrics.record_metric(
+                    "propagation_luf_mhz",
+                    luf_muf_products['luf_mhz'],
+                    {"cycle": self.cycle_count}
+                )
+                self.metrics.record_metric(
+                    "propagation_muf_mhz",
+                    luf_muf_products['muf_mhz'],
+                    {"cycle": self.cycle_count}
+                )
+                self.metrics.record_metric(
+                    "propagation_calculation_time_sec",
+                    luf_muf_products['calculation_time_sec'],
+                    {"cycle": self.cycle_count}
+                )
 
             self.logger.info("Propagation complete")
             return True
@@ -145,6 +236,65 @@ class SystemOrchestrator:
         except Exception as e:
             self.logger.error(f"Propagation failed: {e}", exc_info=True)
             return False
+
+    async def _get_ionospheric_grid(self):
+        """
+        Get ionospheric grid from SR-UKF filter.
+
+        In full implementation, this would retrieve the grid from:
+        1. Assimilation service via gRPC call, or
+        2. Message queue (proc.grid_ready topic), or
+        3. Shared memory / file system
+
+        For now, returns cached grid or creates placeholder Chapman layer.
+
+        Returns:
+            Tuple of (ne_grid, lat_grid, lon_grid, alt_grid, xray_flux)
+        """
+        config = get_config()
+
+        # Check if we have cached grid from assimilation phase
+        if self._ne_grid_cache is not None:
+            self.logger.debug("Using cached Ne grid from assimilation phase")
+            return self._ne_grid_cache
+
+        # TODO: Implement actual grid retrieval from assimilation service
+        # Option 1: gRPC call to assimilation service
+        # Option 2: Read from message queue (proc.grid_ready)
+        # Option 3: Read from shared file system
+
+        # For now, create a placeholder Chapman layer for testing
+        self.logger.warning(
+            "No Ne grid available from filter - creating placeholder Chapman layer"
+        )
+
+        import numpy as np
+
+        lat_grid = config.grid.get_lat_grid()
+        lon_grid = config.grid.get_lon_grid()
+        alt_grid = config.grid.get_alt_grid()
+
+        # Create Chapman layer ionosphere for testing
+        Ne_max = 1e12  # el/m³ (moderate F-layer)
+        h_max = 300.0  # km (F-layer peak)
+        H = 50.0  # km (scale height)
+
+        ne_grid = np.zeros((len(lat_grid), len(lon_grid), len(alt_grid)))
+        for i, h in enumerate(alt_grid):
+            z = (h - h_max) / H
+            Ne = Ne_max * np.exp(1 - z - np.exp(-z))
+            ne_grid[:, :, i] = Ne
+
+        xray_flux = 1e-6  # W/m² (nominal)
+
+        self.logger.info(
+            f"Created Chapman layer: Ne_max={Ne_max:.2e} el/m³ at {h_max} km"
+        )
+
+        # Cache for next use
+        self._ne_grid_cache = (ne_grid, lat_grid, lon_grid, alt_grid, xray_flux)
+
+        return ne_grid, lat_grid, lon_grid, alt_grid, xray_flux
 
     async def generate_outputs(self) -> bool:
         """

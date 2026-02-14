@@ -160,6 +160,35 @@ class SupervisorConfig:
 
 
 @dataclass
+class PropagationConfig:
+    """Configuration for propagation prediction (ray tracing)"""
+
+    # Transmitter location
+    tx_lat: float = 40.0  # Boulder, CO
+    tx_lon: float = -105.0
+    tx_alt_km: float = 0.0
+
+    # Frequency scan parameters
+    freq_min_mhz: float = 2.0
+    freq_max_mhz: float = 15.0
+    freq_step_mhz: float = 0.5
+
+    # NVIS ray geometry
+    elevation_min_deg: float = 70.0
+    elevation_max_deg: float = 90.0
+    elevation_step_deg: float = 2.0
+    azimuth_step_deg: float = 15.0
+
+    # Quality thresholds
+    absorption_threshold_db: float = 50.0
+    snr_threshold_db: float = 10.0
+
+    # Performance
+    enable_parallel: bool = True
+    max_workers: int = 4
+
+
+@dataclass
 class NVISAdapterConfig:
     """Configuration for a single NVIS protocol adapter"""
     enabled: bool = False
@@ -230,6 +259,7 @@ class AutoNVISConfig:
     services: ServiceConfig = field(default_factory=ServiceConfig)
     sr_ukf: SRUKFConfig = field(default_factory=SRUKFConfig)
     supervisor: SupervisorConfig = field(default_factory=SupervisorConfig)
+    propagation: PropagationConfig = field(default_factory=PropagationConfig)
     nvis_ingestion: NVISIngestionConfig = field(default_factory=NVISIngestionConfig)
 
     # Paths
