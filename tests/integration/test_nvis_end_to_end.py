@@ -21,26 +21,26 @@ from src.ingestion.nvis.protocol_adapters.base_adapter import (
 from src.analysis.information_gain_analyzer import InformationGainAnalyzer
 from src.analysis.network_analyzer import NetworkAnalyzer
 from src.common.message_queue import MessageQueueClient, Topics
-from src.common.config import NVISIngestionConfig, QualityTierConfig
+from src.common.config import NVISIngestionConfig, NVISQualityTierConfig
 
 
 @pytest.fixture
 def test_config():
     """Create test configuration"""
     tier_configs = {
-        'platinum': QualityTierConfig(
+        'platinum': NVISQualityTierConfig(
             signal_error_db=2.0,
             delay_error_ms=0.1
         ),
-        'gold': QualityTierConfig(
+        'gold': NVISQualityTierConfig(
             signal_error_db=4.0,
             delay_error_ms=0.5
         ),
-        'silver': QualityTierConfig(
+        'silver': NVISQualityTierConfig(
             signal_error_db=8.0,
             delay_error_ms=2.0
         ),
-        'bronze': QualityTierConfig(
+        'bronze': NVISQualityTierConfig(
             signal_error_db=15.0,
             delay_error_ms=5.0
         )

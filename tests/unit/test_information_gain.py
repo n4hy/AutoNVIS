@@ -28,14 +28,16 @@ def analyzer():
 @pytest.fixture
 def sample_observations():
     """Create sample NVIS observations"""
+    # Grid points: lat = [-90, -60, -30, 0, 30, 60, 90], lon = [-180, -120, -60, 0, 60, 120, 180]
+    # Use observations near grid points for proper information gain calculation
     return [
         {
             'sounder_id': 'SOUNDER_A',
-            'tx_latitude': 40.0,
-            'tx_longitude': -105.0,
+            'tx_latitude': 30.0,  # On grid
+            'tx_longitude': -120.0,  # On grid
             'tx_altitude': 1500.0,
-            'rx_latitude': 40.5,
-            'rx_longitude': -104.5,
+            'rx_latitude': 30.5,
+            'rx_longitude': -119.5,
             'rx_altitude': 1600.0,
             'frequency': 7.5,
             'elevation_angle': 85.0,
@@ -59,11 +61,11 @@ def sample_observations():
         },
         {
             'sounder_id': 'SOUNDER_B',
-            'tx_latitude': 35.0,
-            'tx_longitude': -110.0,
+            'tx_latitude': 30.0,  # On grid
+            'tx_longitude': -60.0,  # On grid
             'tx_altitude': 1200.0,
-            'rx_latitude': 35.5,
-            'rx_longitude': -109.5,
+            'rx_latitude': 30.5,
+            'rx_longitude': -59.5,
             'rx_altitude': 1300.0,
             'frequency': 7.5,
             'elevation_angle': 80.0,
@@ -195,9 +197,10 @@ class TestInformationGainAnalyzer:
 
     def test_nearby_indices(self, analyzer):
         """Test nearby indices computation"""
+        # Use a grid point (30.0, -120.0) so we get results within 500km
         indices = analyzer._get_nearby_indices(
-            lat=40.0,
-            lon=-105.0,
+            lat=30.0,  # On grid
+            lon=-120.0,  # On grid
             radius_km=500.0
         )
 
@@ -261,11 +264,11 @@ class TestEdgeCases:
         """Test with single observation"""
         obs = [{
             'sounder_id': 'SOLO',
-            'tx_latitude': 40.0,
-            'tx_longitude': -105.0,
+            'tx_latitude': 30.0,  # On grid
+            'tx_longitude': -120.0,  # On grid
             'tx_altitude': 1500.0,
-            'rx_latitude': 40.5,
-            'rx_longitude': -104.5,
+            'rx_latitude': 30.5,
+            'rx_longitude': -119.5,
             'rx_altitude': 1600.0,
             'frequency': 7.5,
             'elevation_angle': 85.0,
@@ -290,11 +293,11 @@ class TestEdgeCases:
         """Test with very low observation errors"""
         obs = [{
             'sounder_id': 'PRECISE',
-            'tx_latitude': 40.0,
-            'tx_longitude': -105.0,
+            'tx_latitude': 30.0,  # On grid
+            'tx_longitude': -120.0,  # On grid
             'tx_altitude': 1500.0,
-            'rx_latitude': 40.5,
-            'rx_longitude': -104.5,
+            'rx_latitude': 30.5,
+            'rx_longitude': -119.5,
             'rx_altitude': 1600.0,
             'frequency': 7.5,
             'elevation_angle': 85.0,
