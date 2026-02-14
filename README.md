@@ -185,11 +185,11 @@ python3 demo_standalone.py
 - Status: ✅ Complete with unit tests
 
 ⏸️ **Pending Tasks:**
+- **Ray tracing integration** (Phase 12 - **Native C++ implementation complete!** See `NATIVE_RAYTRACER_SUMMARY.md`)
 - Ionosonde data ingestion (GIRO/DIDBase)
 - Offline smoother RTS backward pass implementation
 - TEC observation model refinement (slant path ray tracing)
 - HDF5 checkpoint persistence
-- PHaRLAP propagation engine integration
 - Historical validation with real storm data
 
 📊 **Code Statistics:**
@@ -1302,6 +1302,13 @@ stats = gnss_client.statistics
   - AutoNVISFilter usage guide
   - Integration test results
   - Performance characteristics
+
+- **docs/PHARLAP_INSTALLATION.md** - PHaRLAP ray tracing setup ⏸️
+  - MATLAB/Runtime installation
+  - Python-MATLAB bridge configuration
+  - Auto-NVIS integration architecture
+  - Performance optimization
+  - Troubleshooting guide
 
 - **docs/phase1_validation_report.md** - Validation results
   - Adaptive inflation verification
