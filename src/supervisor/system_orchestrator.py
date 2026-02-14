@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.common.config import get_config
 from src.common.logging_config import ServiceLogger, MetricsLogger
 from src.common.message_queue import MessageQueueClient, Topics
+from .grid_subscriber import GridSubscriber
 
 
 class CyclePhase:
@@ -84,6 +85,13 @@ class SystemOrchestrator:
         # Propagation service (initialized on demand)
         self.propagation_service = None
         self._ne_grid_cache = None  # Cache for latest Ne grid from filter
+
+        # Grid subscriber (starts background thread if MQ client available)
+        self.grid_subscriber = None
+        if self.mq_client:
+            self.grid_subscriber = GridSubscriber(self.mq_client)
+            self.grid_subscriber.start()
+            self.logger.info("Grid subscriber started")
 
         self.logger.info(
             f"Orchestrator initialized: cycle={self.cycle_interval}s, "
@@ -241,29 +249,43 @@ class SystemOrchestrator:
         """
         Get ionospheric grid from SR-UKF filter.
 
-        In full implementation, this would retrieve the grid from:
-        1. Assimilation service via gRPC call, or
-        2. Message queue (proc.grid_ready topic), or
-        3. Shared memory / file system
-
-        For now, returns cached grid or creates placeholder Chapman layer.
+        Retrieval methods (in priority order):
+        1. Message queue subscriber (proc.grid_ready topic)
+        2. Cached grid from previous cycle
+        3. Placeholder Chapman layer (fallback for testing)
 
         Returns:
             Tuple of (ne_grid, lat_grid, lon_grid, alt_grid, xray_flux)
         """
         config = get_config()
 
-        # Check if we have cached grid from assimilation phase
+        # Method 1: Try to get grid from message queue subscriber
+        if self.grid_subscriber is not None:
+            self.logger.info("Retrieving grid from message queue...")
+
+            grid_data = await self.grid_subscriber.get_latest_grid(
+                max_age_seconds=1200.0,  # 20 minutes max age
+                timeout=30.0  # Wait up to 30 seconds for grid
+            )
+
+            if grid_data is not None:
+                self.logger.info("Using fresh grid from message queue")
+
+                # Cache for fallback
+                self._ne_grid_cache = grid_data
+
+                return grid_data
+            else:
+                self.logger.warning(
+                    "No fresh grid from message queue within 30 seconds"
+                )
+
+        # Method 2: Use cached grid from previous cycle
         if self._ne_grid_cache is not None:
-            self.logger.debug("Using cached Ne grid from assimilation phase")
+            self.logger.info("Using cached grid from previous cycle")
             return self._ne_grid_cache
 
-        # TODO: Implement actual grid retrieval from assimilation service
-        # Option 1: gRPC call to assimilation service
-        # Option 2: Read from message queue (proc.grid_ready)
-        # Option 3: Read from shared file system
-
-        # For now, create a placeholder Chapman layer for testing
+        # Method 3: Create placeholder Chapman layer for testing
         self.logger.warning(
             "No Ne grid available from filter - creating placeholder Chapman layer"
         )
