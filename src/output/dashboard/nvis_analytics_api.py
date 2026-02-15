@@ -44,6 +44,8 @@ class WebSocketManager:
 
     async def broadcast(self, message: dict):
         """Broadcast message to all connected clients"""
+        if self.active_connections:
+            self.logger.info(f"Broadcasting {message.get('type', 'unknown')} to {len(self.active_connections)} client(s)")
         disconnected = []
         for connection in self.active_connections:
             try:

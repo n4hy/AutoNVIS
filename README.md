@@ -608,10 +608,9 @@ def should_use_smoother(self) -> bool:
 - CUDA-capable GPU for QR decomposition in SR-UKF update step
 
 **Software Stack**:
-- Dockerized containers:
-  - Supervisor Module (Python)
-  - Assimilation Core (C++/Eigen)
-  - PHaRLAP (Fortran/MATLAB Runtime)
+- Supervisor Module (Python)
+- Assimilation Core (C++/Eigen)
+- PHaRLAP (Fortran/MATLAB Runtime)
 
 ## Use Cases
 
@@ -920,7 +919,6 @@ AutoNVIS/
 ├── config/                    # YAML configuration files
 ├── data/                      # Runtime data storage
 ├── docs/                      # Documentation
-├── docker/                    # Docker configurations
 └── scripts/                   # Utility scripts
 ```
 
@@ -1057,29 +1055,6 @@ print(stats)
 
 ## Deployment Guide
 
-### Docker Deployment (Recommended)
-
-**Start Infrastructure Services**:
-```bash
-cd docker
-docker-compose up -d rabbitmq redis
-```
-
-**Build Application Containers**:
-```bash
-# Build all services
-docker-compose build
-
-# Start all services
-docker-compose up -d
-```
-
-**Service Endpoints**:
-- RabbitMQ Management: http://localhost:15672
-- Supervisor API: http://localhost:8000
-- Web Dashboard: http://localhost:8080
-- Redis: localhost:6379
-
 ### Systemd Deployment (Linux)
 
 **Create systemd service** (`/etc/systemd/system/autonvis-ingestion.service`):
@@ -1187,9 +1162,6 @@ pika.exceptions.AMQPConnectionError: Connection refused
 ```bash
 # Start RabbitMQ
 sudo systemctl start rabbitmq-server
-
-# Or with Docker
-docker-compose up -d rabbitmq
 
 # Verify running
 sudo rabbitmqctl status

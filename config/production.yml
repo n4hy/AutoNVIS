@@ -3,7 +3,7 @@
 
 services:
   # RabbitMQ (Message Queue)
-  rabbitmq_host: autonvis-rabbitmq  # Docker container name
+  rabbitmq_host: localhost
   rabbitmq_port: 5672
   rabbitmq_user: autonvis
   rabbitmq_password: Zh1tbu23!
