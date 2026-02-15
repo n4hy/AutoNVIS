@@ -44,6 +44,7 @@ class MessageQueueClient:
         port: int = 5672,
         username: str = "guest",
         password: str = "guest",
+        vhost: str = "/",
         exchange: str = "autonvis",
         exchange_type: str = "topic"
     ):
@@ -55,6 +56,7 @@ class MessageQueueClient:
             port: RabbitMQ port
             username: RabbitMQ username
             password: RabbitMQ password
+            vhost: RabbitMQ virtual host
             exchange: Exchange name
             exchange_type: Exchange type (topic, direct, fanout)
         """
@@ -62,6 +64,7 @@ class MessageQueueClient:
         self.port = port
         self.username = username
         self.password = password
+        self.vhost = vhost
         self.exchange = exchange
         self.exchange_type = exchange_type
 
@@ -85,6 +88,7 @@ class MessageQueueClient:
                 parameters = pika.ConnectionParameters(
                     host=self.host,
                     port=self.port,
+                    virtual_host=self.vhost,
                     credentials=credentials,
                     heartbeat=600,
                     blocked_connection_timeout=300

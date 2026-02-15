@@ -264,7 +264,8 @@ class GOESXRayClient:
                 host=config.services.rabbitmq_host,
                 port=config.services.rabbitmq_port,
                 username=config.services.rabbitmq_user,
-                password=config.services.rabbitmq_password
+                password=config.services.rabbitmq_password,
+                vhost=config.services.rabbitmq_vhost
             )
 
         await self.run_monitoring_loop()

@@ -54,25 +54,67 @@ def main():
 
     if not args.no_mq:
         try:
-            mq_client = MessageQueueClient(
-                host=config.services.rabbitmq_host,
-                port=config.services.rabbitmq_port,
-                username=config.services.rabbitmq_user,
-                password=config.services.rabbitmq_password
-            )
-            logger.info("Connected to RabbitMQ")
-
             # Initialize dashboard state
             dashboard_state = DashboardState(retention_hours=24)
             logger.info("Dashboard state manager initialized")
 
-            # Initialize subscribers
+            # Initialize subscribers (each creates its own RabbitMQ connection)
             # Note: WebSocket broadcast callback will be set after app creation
-            grid_subscriber = GridDataSubscriber(mq_client, dashboard_state, None)
-            propagation_subscriber = PropagationSubscriber(mq_client, dashboard_state, None)
-            spaceweather_subscriber = SpaceWeatherSubscriber(mq_client, dashboard_state, None)
-            observation_subscriber = ObservationSubscriber(mq_client, dashboard_state, None)
-            health_subscriber = SystemHealthSubscriber(mq_client, dashboard_state, None)
+            grid_subscriber = GridDataSubscriber(
+                config.services.rabbitmq_host,
+                config.services.rabbitmq_port,
+                config.services.rabbitmq_user,
+                config.services.rabbitmq_password,
+                config.services.rabbitmq_vhost,
+                dashboard_state,
+                None
+            )
+            propagation_subscriber = PropagationSubscriber(
+                config.services.rabbitmq_host,
+                config.services.rabbitmq_port,
+                config.services.rabbitmq_user,
+                config.services.rabbitmq_password,
+                config.services.rabbitmq_vhost,
+                dashboard_state,
+                None
+            )
+            spaceweather_subscriber = SpaceWeatherSubscriber(
+                config.services.rabbitmq_host,
+                config.services.rabbitmq_port,
+                config.services.rabbitmq_user,
+                config.services.rabbitmq_password,
+                config.services.rabbitmq_vhost,
+                dashboard_state,
+                None
+            )
+            observation_subscriber = ObservationSubscriber(
+                config.services.rabbitmq_host,
+                config.services.rabbitmq_port,
+                config.services.rabbitmq_user,
+                config.services.rabbitmq_password,
+                config.services.rabbitmq_vhost,
+                dashboard_state,
+                None
+            )
+            health_subscriber = SystemHealthSubscriber(
+                config.services.rabbitmq_host,
+                config.services.rabbitmq_port,
+                config.services.rabbitmq_user,
+                config.services.rabbitmq_password,
+                config.services.rabbitmq_vhost,
+                dashboard_state,
+                None
+            )
+
+            # Create one connection for the main dashboard API (NVIS analytics)
+            mq_client = MessageQueueClient(
+                host=config.services.rabbitmq_host,
+                port=config.services.rabbitmq_port,
+                username=config.services.rabbitmq_user,
+                password=config.services.rabbitmq_password,
+                vhost=config.services.rabbitmq_vhost
+            )
+            logger.info("Main RabbitMQ connection created")
 
             subscribers = {
                 'grid': grid_subscriber,

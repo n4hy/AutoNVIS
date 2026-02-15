@@ -28,7 +28,11 @@ class GridDataSubscriber:
 
     def __init__(
         self,
-        mq_client: MessageQueueClient,
+        rabbitmq_host: str,
+        rabbitmq_port: int,
+        rabbitmq_user: str,
+        rabbitmq_password: str,
+        rabbitmq_vhost: str,
         state: DashboardState,
         ws_broadcast_callback: Optional[Callable] = None
     ):
@@ -36,11 +40,20 @@ class GridDataSubscriber:
         Initialize grid subscriber.
 
         Args:
-            mq_client: Message queue client
+            rabbitmq_host: RabbitMQ host
+            rabbitmq_port: RabbitMQ port
+            rabbitmq_user: RabbitMQ username
+            rabbitmq_password: RabbitMQ password
+            rabbitmq_vhost: RabbitMQ vhost
             state: Dashboard state manager
             ws_broadcast_callback: Async callback for WebSocket broadcast
         """
-        self.mq_client = mq_client
+        self.rabbitmq_host = rabbitmq_host
+        self.rabbitmq_port = rabbitmq_port
+        self.rabbitmq_user = rabbitmq_user
+        self.rabbitmq_password = rabbitmq_password
+        self.rabbitmq_vhost = rabbitmq_vhost
+        self.mq_client = None  # Will be created in thread
         self.state = state
         self.ws_broadcast = ws_broadcast_callback
         self.logger = ServiceLogger("dashboard", "grid_subscriber")
@@ -160,6 +173,16 @@ class GridDataSubscriber:
     def _consume_thread(self):
         """Background thread for consuming grid messages."""
         try:
+            # Create own connection in this thread
+            self.mq_client = MessageQueueClient(
+                host=self.rabbitmq_host,
+                port=self.rabbitmq_port,
+                username=self.rabbitmq_user,
+                password=self.rabbitmq_password,
+                vhost=self.rabbitmq_vhost
+            )
+            self.logger.info("Grid subscriber connected to RabbitMQ")
+
             self.mq_client.subscribe(
                 topic_pattern=Topics.PROC_GRID_READY,
                 callback=self._on_grid_message,
@@ -176,11 +199,20 @@ class PropagationSubscriber:
 
     def __init__(
         self,
-        mq_client: MessageQueueClient,
+        rabbitmq_host: str,
+        rabbitmq_port: int,
+        rabbitmq_user: str,
+        rabbitmq_password: str,
+        rabbitmq_vhost: str,
         state: DashboardState,
         ws_broadcast_callback: Optional[Callable] = None
     ):
-        self.mq_client = mq_client
+        self.rabbitmq_host = rabbitmq_host
+        self.rabbitmq_port = rabbitmq_port
+        self.rabbitmq_user = rabbitmq_user
+        self.rabbitmq_password = rabbitmq_password
+        self.rabbitmq_vhost = rabbitmq_vhost
+        self.mq_client = None
         self.state = state
         self.ws_broadcast = ws_broadcast_callback
         self.logger = ServiceLogger("dashboard", "propagation_subscriber")
@@ -254,6 +286,16 @@ class PropagationSubscriber:
     def _consume_thread(self):
         """Background thread for consuming propagation messages."""
         try:
+            # Create own connection
+            self.mq_client = MessageQueueClient(
+                host=self.rabbitmq_host,
+                port=self.rabbitmq_port,
+                username=self.rabbitmq_user,
+                password=self.rabbitmq_password,
+                vhost=self.rabbitmq_vhost
+            )
+            self.logger.info("Propagation subscriber connected to RabbitMQ")
+
             # Subscribe to frequency plans
             self.mq_client.subscribe(
                 topic_pattern=Topics.OUT_FREQUENCY_PLAN,
@@ -280,11 +322,20 @@ class SpaceWeatherSubscriber:
 
     def __init__(
         self,
-        mq_client: MessageQueueClient,
+        rabbitmq_host: str,
+        rabbitmq_port: int,
+        rabbitmq_user: str,
+        rabbitmq_password: str,
+        rabbitmq_vhost: str,
         state: DashboardState,
         ws_broadcast_callback: Optional[Callable] = None
     ):
-        self.mq_client = mq_client
+        self.rabbitmq_host = rabbitmq_host
+        self.rabbitmq_port = rabbitmq_port
+        self.rabbitmq_user = rabbitmq_user
+        self.rabbitmq_password = rabbitmq_password
+        self.rabbitmq_vhost = rabbitmq_vhost
+        self.mq_client = None
         self.state = state
         self.ws_broadcast = ws_broadcast_callback
         self.logger = ServiceLogger("dashboard", "spaceweather_subscriber")
@@ -377,6 +428,16 @@ class SpaceWeatherSubscriber:
     def _consume_thread(self):
         """Background thread for consuming space weather messages."""
         try:
+            # Create own connection
+            self.mq_client = MessageQueueClient(
+                host=self.rabbitmq_host,
+                port=self.rabbitmq_port,
+                username=self.rabbitmq_user,
+                password=self.rabbitmq_password,
+                vhost=self.rabbitmq_vhost
+            )
+            self.logger.info("Space weather subscriber connected to RabbitMQ")
+
             self.mq_client.subscribe(
                 topic_pattern=Topics.WX_XRAY,
                 callback=self._on_xray,
@@ -413,11 +474,20 @@ class ObservationSubscriber:
 
     def __init__(
         self,
-        mq_client: MessageQueueClient,
+        rabbitmq_host: str,
+        rabbitmq_port: int,
+        rabbitmq_user: str,
+        rabbitmq_password: str,
+        rabbitmq_vhost: str,
         state: DashboardState,
         ws_broadcast_callback: Optional[Callable] = None
     ):
-        self.mq_client = mq_client
+        self.rabbitmq_host = rabbitmq_host
+        self.rabbitmq_port = rabbitmq_port
+        self.rabbitmq_user = rabbitmq_user
+        self.rabbitmq_password = rabbitmq_password
+        self.rabbitmq_vhost = rabbitmq_vhost
+        self.mq_client = None
         self.state = state
         self.ws_broadcast = ws_broadcast_callback
         self.logger = ServiceLogger("dashboard", "observation_subscriber")
@@ -471,6 +541,16 @@ class ObservationSubscriber:
     def _consume_thread(self):
         """Background thread for consuming observation messages."""
         try:
+            # Create own connection
+            self.mq_client = MessageQueueClient(
+                host=self.rabbitmq_host,
+                port=self.rabbitmq_port,
+                username=self.rabbitmq_user,
+                password=self.rabbitmq_password,
+                vhost=self.rabbitmq_vhost
+            )
+            self.logger.info("Observation subscriber connected to RabbitMQ")
+
             self.mq_client.subscribe(
                 topic_pattern=Topics.OBS_GNSS_TEC,
                 callback=lambda msg: self._on_observation(msg, 'gnss_tec'),
@@ -501,11 +581,20 @@ class SystemHealthSubscriber:
 
     def __init__(
         self,
-        mq_client: MessageQueueClient,
+        rabbitmq_host: str,
+        rabbitmq_port: int,
+        rabbitmq_user: str,
+        rabbitmq_password: str,
+        rabbitmq_vhost: str,
         state: DashboardState,
         ws_broadcast_callback: Optional[Callable] = None
     ):
-        self.mq_client = mq_client
+        self.rabbitmq_host = rabbitmq_host
+        self.rabbitmq_port = rabbitmq_port
+        self.rabbitmq_user = rabbitmq_user
+        self.rabbitmq_password = rabbitmq_password
+        self.rabbitmq_vhost = rabbitmq_vhost
+        self.mq_client = None
         self.state = state
         self.ws_broadcast = ws_broadcast_callback
         self.logger = ServiceLogger("dashboard", "health_subscriber")
@@ -567,6 +656,16 @@ class SystemHealthSubscriber:
     def _consume_thread(self):
         """Background thread for consuming health messages."""
         try:
+            # Create own connection
+            self.mq_client = MessageQueueClient(
+                host=self.rabbitmq_host,
+                port=self.rabbitmq_port,
+                username=self.rabbitmq_user,
+                password=self.rabbitmq_password,
+                vhost=self.rabbitmq_vhost
+            )
+            self.logger.info("System health subscriber connected to RabbitMQ")
+
             self.mq_client.subscribe(
                 topic_pattern=Topics.HEALTH_STATUS,
                 callback=self._on_health_status,

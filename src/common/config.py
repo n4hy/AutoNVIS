@@ -100,6 +100,7 @@ class ServiceConfig:
     rabbitmq_port: int = 5672
     rabbitmq_user: str = "guest"
     rabbitmq_password: str = "guest"
+    rabbitmq_vhost: str = "/"
 
     # Redis
     redis_host: str = "redis"

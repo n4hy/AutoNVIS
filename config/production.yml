@@ -3,10 +3,11 @@
 
 services:
   # RabbitMQ (Message Queue)
-  rabbitmq_host: localhost  # Use "rabbitmq" for Docker deployment
+  rabbitmq_host: localhost  # Changed from 'rabbitmq' for local development
   rabbitmq_port: 5672
-  rabbitmq_user: guest
-  rabbitmq_password: guest
+  rabbitmq_user: autonvis
+  rabbitmq_password: Zh1tbu23!
+  rabbitmq_vhost: autonvis
 
   # Redis (Cache)
   redis_host: localhost
