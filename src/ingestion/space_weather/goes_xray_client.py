@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from src.common.config import get_config
 from src.common.constants import FLARE_CLASSES, M1_FLARE_THRESHOLD
-from src.common.logging_config import ServiceLogger
+from src.common.logging_config import ServiceLogger, setup_logging
 from src.common.message_queue import MessageQueueClient, Topics
 
 
@@ -273,6 +273,9 @@ class GOESXRayClient:
 
 async def main():
     """Standalone entry point for GOES X-ray client"""
+    # Set up logging
+    setup_logging("ingestion", log_level="INFO", json_format=False)
+
     client = GOESXRayClient()
     await client.run()
 
