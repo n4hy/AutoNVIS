@@ -45,7 +45,7 @@ def create_spaceweather_routes(state: DashboardState) -> APIRouter:
 
         # Add flare classification
         for entry in history:
-            flux = entry.get('flux_wm2', 0.0)
+            flux = entry.get('flux_short', entry.get('flux_long', entry.get('flux_wm2', 0.0)))
             if flux >= 1e-4:
                 entry['flare_class'] = 'X'
                 entry['flare_magnitude'] = flux / 1e-4
@@ -86,7 +86,7 @@ def create_spaceweather_routes(state: DashboardState) -> APIRouter:
         latest = history[-1]
 
         # Classify flare
-        flux = latest.get('flux_wm2', 0.0)
+        flux = latest.get('flux_short', latest.get('flux_long', latest.get('flux_wm2', 0.0)))
         if flux >= 1e-4:
             flare_class = 'X'
             magnitude = flux / 1e-4
@@ -228,14 +228,14 @@ def create_spaceweather_routes(state: DashboardState) -> APIRouter:
 
         # X-ray statistics
         xray_history = state.get_xray_history(hours=24)
-        xray_fluxes = [entry.get('flux_wm2', 0.0) for entry in xray_history]
+        xray_fluxes = [entry.get('flux_short', entry.get('flux_long', entry.get('flux_wm2', 0.0))) for entry in xray_history]
 
         # Count flares by class
         flare_counts = {'A': 0, 'B': 0, 'C': 0, 'M': 0, 'X': 0}
         max_flare = {'class': 'A', 'magnitude': 0.0, 'timestamp': None}
 
         for entry in xray_history:
-            flux = entry.get('flux_wm2', 0.0)
+            flux = entry.get('flux_short', entry.get('flux_long', entry.get('flux_wm2', 0.0)))
             timestamp = entry.get('timestamp')
 
             if flux >= 1e-4:

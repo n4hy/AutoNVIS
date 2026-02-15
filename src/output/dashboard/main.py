@@ -15,8 +15,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.common.config import get_config
 from src.common.message_queue import MessageQueueClient
-from src.output.dashboard.nvis_analytics_api import create_app
-from src.common.logging_config import ServiceLogger
+from src.output.dashboard.nvis_analytics_api import create_app, WebSocketManager
+from src.common.logging_config import ServiceLogger, setup_logging
 from src.output.dashboard.backend.state_manager import DashboardState
 from src.output.dashboard.backend.subscribers import (
     GridDataSubscriber,
@@ -36,6 +36,8 @@ def main():
     parser.add_argument('--no-mq', action='store_true', help='Disable message queue')
     args = parser.parse_args()
 
+    # Set up logging
+    setup_logging("dashboard", log_level="INFO", json_format=False)
     logger = ServiceLogger("dashboard_main")
 
     # Load configuration
@@ -58,8 +60,12 @@ def main():
             dashboard_state = DashboardState(retention_hours=24)
             logger.info("Dashboard state manager initialized")
 
+            # Create WebSocket manager BEFORE subscribers
+            ws_manager = WebSocketManager()
+            logger.info("WebSocket manager initialized")
+
             # Initialize subscribers (each creates its own RabbitMQ connection)
-            # Note: WebSocket broadcast callback will be set after app creation
+            # WebSocket broadcast callback is set during construction
             grid_subscriber = GridDataSubscriber(
                 config.services.rabbitmq_host,
                 config.services.rabbitmq_port,
@@ -67,8 +73,9 @@ def main():
                 config.services.rabbitmq_password,
                 config.services.rabbitmq_vhost,
                 dashboard_state,
-                None
+                ws_manager.broadcast
             )
+            logger.info("GridDataSubscriber created with WebSocket callback")
             propagation_subscriber = PropagationSubscriber(
                 config.services.rabbitmq_host,
                 config.services.rabbitmq_port,
@@ -76,8 +83,9 @@ def main():
                 config.services.rabbitmq_password,
                 config.services.rabbitmq_vhost,
                 dashboard_state,
-                None
+                ws_manager.broadcast
             )
+            logger.info("PropagationSubscriber created with WebSocket callback")
             spaceweather_subscriber = SpaceWeatherSubscriber(
                 config.services.rabbitmq_host,
                 config.services.rabbitmq_port,
@@ -85,8 +93,9 @@ def main():
                 config.services.rabbitmq_password,
                 config.services.rabbitmq_vhost,
                 dashboard_state,
-                None
+                ws_manager.broadcast
             )
+            logger.info("SpaceWeatherSubscriber created with WebSocket callback")
             observation_subscriber = ObservationSubscriber(
                 config.services.rabbitmq_host,
                 config.services.rabbitmq_port,
@@ -94,8 +103,9 @@ def main():
                 config.services.rabbitmq_password,
                 config.services.rabbitmq_vhost,
                 dashboard_state,
-                None
+                ws_manager.broadcast
             )
+            logger.info("ObservationSubscriber created with WebSocket callback")
             health_subscriber = SystemHealthSubscriber(
                 config.services.rabbitmq_host,
                 config.services.rabbitmq_port,
@@ -103,8 +113,9 @@ def main():
                 config.services.rabbitmq_password,
                 config.services.rabbitmq_vhost,
                 dashboard_state,
-                None
+                ws_manager.broadcast
             )
+            logger.info("SystemHealthSubscriber created with WebSocket callback")
 
             # Create one connection for the main dashboard API (NVIS analytics)
             mq_client = MessageQueueClient(
@@ -122,7 +133,8 @@ def main():
                 'spaceweather': spaceweather_subscriber,
                 'observation': observation_subscriber,
                 'health': health_subscriber,
-                'state': dashboard_state
+                'state': dashboard_state,
+                'ws_manager': ws_manager
             }
 
             # Start all subscribers
@@ -135,7 +147,9 @@ def main():
             logger.info("All subscribers started successfully")
 
         except Exception as e:
-            logger.warning(f"Could not connect to RabbitMQ: {e}")
+            logger.error(f"Failed to initialize real-time updates: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
             logger.warning("Running without real-time updates")
 
     # Create FastAPI app

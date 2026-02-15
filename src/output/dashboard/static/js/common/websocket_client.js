@@ -219,8 +219,10 @@ class WebSocketClient {
 // Create global WebSocket client instance
 const ws = new WebSocketClient();
 
-// Auto-connect on page load
-window.addEventListener('load', () => {
+// Auto-connect after DOM is ready and handlers are registered
+// Use DOMContentLoaded instead of 'load' to connect sooner
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('[websocket_client.js] Connecting WebSocket...');
     ws.connect();
 });
 

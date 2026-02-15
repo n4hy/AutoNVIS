@@ -113,8 +113,10 @@ services:
       dockerfile: docker/output/Dockerfile
     container_name: autonvis-output
     depends_on:
-      - rabbitmq
-      - redis
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8080:8080"  # Web dashboard
     environment:

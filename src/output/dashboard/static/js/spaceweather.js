@@ -82,7 +82,46 @@ async function loadCurrentStatus() {
 }
 
 /**
- * Update X-ray flux chart
+ * Append single X-ray data point to existing chart (for real-time updates)
+ */
+function appendXRayDataPoint(data) {
+    try {
+        const plotDiv = document.getElementById('xray-flux-plot');
+
+        // Check if chart exists with data
+        if (plotDiv && plotDiv.data && plotDiv.data.length > 0) {
+            const timestamp = new Date(data.timestamp);
+            const flux = data.flux_short || data.flux_long || 0;
+
+            // Append new point to existing trace
+            Plotly.extendTraces('xray-flux-plot', {
+                x: [[timestamp]],
+                y: [[flux]]
+            }, [0]);
+
+            console.log(`[Chart Update] Appended X-ray data point: ${flux.toExponential(2)} at ${timestamp.toISOString()}`);
+
+            // Optional: limit chart to last N points to prevent memory issues
+            const maxPoints = 1000;
+            if (plotDiv.data[0].x.length > maxPoints) {
+                Plotly.relayout('xray-flux-plot', {
+                    'xaxis.range': [plotDiv.data[0].x[plotDiv.data[0].x.length - maxPoints], timestamp]
+                });
+            }
+        } else {
+            // Chart doesn't exist yet, do full refresh
+            console.log('[Chart Update] Chart not initialized, loading full chart...');
+            updateXRayChart();
+        }
+    } catch (error) {
+        console.error('Error appending X-ray data point:', error);
+        // Fallback to full refresh on error
+        updateXRayChart();
+    }
+}
+
+/**
+ * Update X-ray flux chart (full refresh)
  */
 async function updateXRayChart() {
     try {
@@ -97,7 +136,7 @@ async function updateXRayChart() {
             mode: 'lines',
             name: 'X-Ray Flux',
             x: xrayData.data.map(d => new Date(d.timestamp)),
-            y: xrayData.data.map(d => d.flux_wm2),
+            y: xrayData.data.map(d => d.flux_short),
             line: { color: '#FF6347', width: 2 },
             hovertemplate: 'Time: %{x}<br>Flux: %{y:.2e} W/m²<br>Class: %{text}<extra></extra>',
             text: xrayData.data.map(d => d.flare_class + d.flare_magnitude.toFixed(1))
@@ -373,15 +412,31 @@ async function loadAlerts() {
     }
 }
 
-// WebSocket handlers for real-time updates
+// Register WebSocket handlers IMMEDIATELY (before connection established)
+console.log('[spaceweather.js] Registering WebSocket handlers...');
+
 ws.on('xray_update', async (data) => {
-    console.log('X-ray update received');
+    console.log('X-ray update received:', data);
+
+    // Update current status display immediately from WebSocket data
+    if (data.flare_class && data.flare_magnitude !== undefined) {
+        const flareClass = data.flare_class + data.flare_magnitude.toFixed(1);
+        const element = document.getElementById('current-xray-class');
+        if (element) {
+            element.textContent = flareClass;
+            element.style.color = Utils.getFlareColor(data.flare_class);
+        }
+    }
+
+    // Append new point to chart (incremental update, no REST call)
+    appendXRayDataPoint(data);
+
+    // Also update other current status fields
     await loadCurrentStatus();
-    await updateXRayChart();
 });
 
 ws.on('solar_wind_update', async (data) => {
-    console.log('Solar wind update received');
+    console.log('Solar wind update received:', data);
     await loadCurrentStatus();
     await loadSolarWindData();
 });
@@ -400,5 +455,7 @@ ws.on('alert', async (data) => {
     Utils.showNotification(data.message || 'New alert', severity, 5000);
 });
 
-// Initialize on page load
-window.addEventListener('load', initSpaceWeatherView);
+console.log('[spaceweather.js] WebSocket handlers registered successfully');
+
+// Initialize view when DOM is ready
+document.addEventListener('DOMContentLoaded', initSpaceWeatherView);

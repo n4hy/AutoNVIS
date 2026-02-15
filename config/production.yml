@@ -3,7 +3,7 @@
 
 services:
   # RabbitMQ (Message Queue)
-  rabbitmq_host: localhost  # Changed from 'rabbitmq' for local development
+  rabbitmq_host: localhost  # Use 'localhost' for local dev, 'autonvis-rabbitmq' for Docker
   rabbitmq_port: 5672
   rabbitmq_user: autonvis
   rabbitmq_password: Zh1tbu23!

@@ -16,6 +16,39 @@ from src.common.logging_config import ServiceLogger
 from .state_manager import DashboardState
 
 
+class AsyncTaskRunner:
+    """
+    Run async tasks from sync context without blocking.
+
+    This allows synchronous RabbitMQ consumer threads to submit async
+    tasks (like WebSocket broadcasts) without blocking message processing.
+    """
+
+    def __init__(self):
+        self.loop = None
+        self.thread = threading.Thread(target=self._run_loop, daemon=True, name="AsyncTaskRunner")
+        self.thread.start()
+        # Wait for loop to be ready
+        while self.loop is None:
+            threading.Event().wait(0.01)
+
+    def _run_loop(self):
+        """Background thread running the event loop"""
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_forever()
+
+    def submit(self, coro):
+        """Submit coroutine to be run in background loop (non-blocking)"""
+        if self.loop and not self.loop.is_closed():
+            asyncio.run_coroutine_threadsafe(coro, self.loop)
+
+    def stop(self):
+        """Stop the background loop"""
+        if self.loop and not self.loop.is_closed():
+            self.loop.call_soon_threadsafe(self.loop.stop)
+
+
 class GridDataSubscriber:
     """
     Subscribes to proc.grid_ready messages and updates dashboard state.
@@ -57,6 +90,7 @@ class GridDataSubscriber:
         self.state = state
         self.ws_broadcast = ws_broadcast_callback
         self.logger = ServiceLogger("dashboard", "grid_subscriber")
+        self.async_runner = AsyncTaskRunner()  # For non-blocking async broadcasts
 
         self.subscriber_thread: Optional[threading.Thread] = None
         self.running = False
@@ -108,10 +142,10 @@ class GridDataSubscriber:
             timestamp = datetime.fromisoformat(message.timestamp.rstrip('Z'))
             self.state.update_grid(grid_data, timestamp)
 
-            # Broadcast WebSocket update
+            # Broadcast WebSocket update (non-blocking)
             if self.ws_broadcast:
                 try:
-                    asyncio.run(self.ws_broadcast({
+                    self.async_runner.submit(self.ws_broadcast({
                         'type': 'grid_update',
                         'data': {
                             'cycle_id': cycle_id,
@@ -120,8 +154,9 @@ class GridDataSubscriber:
                             'quality': grid_data.get('quality', 'unknown')
                         }
                     }))
+                    self.logger.debug(f"Grid update broadcast submitted: {cycle_id}")
                 except Exception as e:
-                    self.logger.error(f"WebSocket broadcast failed: {e}")
+                    self.logger.error(f"WebSocket broadcast submit failed: {e}")
 
             self.logger.info(f"Grid updated: {cycle_id}, Ne_max={np.max(grid_data['ne_grid']):.2e}")
 
@@ -216,6 +251,7 @@ class PropagationSubscriber:
         self.state = state
         self.ws_broadcast = ws_broadcast_callback
         self.logger = ServiceLogger("dashboard", "propagation_subscriber")
+        self.async_runner = AsyncTaskRunner()  # For non-blocking async broadcasts
 
         self.subscriber_thread: Optional[threading.Thread] = None
         self.running = False
@@ -255,7 +291,7 @@ class PropagationSubscriber:
             })
 
             if self.ws_broadcast:
-                asyncio.run(self.ws_broadcast({
+                self.async_runner.submit(self.ws_broadcast({
                     'type': 'frequency_plan_update',
                     'data': data
                 }))
@@ -275,7 +311,7 @@ class PropagationSubscriber:
             })
 
             if self.ws_broadcast:
-                asyncio.run(self.ws_broadcast({
+                self.async_runner.submit(self.ws_broadcast({
                     'type': 'coverage_map_update',
                     'data': {'frequency': data.get('frequency_mhz')}
                 }))
@@ -339,6 +375,7 @@ class SpaceWeatherSubscriber:
         self.state = state
         self.ws_broadcast = ws_broadcast_callback
         self.logger = ServiceLogger("dashboard", "spaceweather_subscriber")
+        self.async_runner = AsyncTaskRunner()  # For non-blocking async broadcasts
 
         self.subscriber_thread: Optional[threading.Thread] = None
         self.running = False
@@ -375,10 +412,11 @@ class SpaceWeatherSubscriber:
             self.state.update_xray_flux(data)
 
             if self.ws_broadcast:
-                asyncio.run(self.ws_broadcast({
+                self.async_runner.submit(self.ws_broadcast({
                     'type': 'xray_update',
                     'data': data
                 }))
+                self.logger.debug(f"X-ray update broadcast submitted: flux={data.get('flux_short', 0):.2e}")
 
         except Exception as e:
             self.logger.error(f"Error processing X-ray message: {e}", exc_info=True)
@@ -390,10 +428,11 @@ class SpaceWeatherSubscriber:
             self.state.update_solar_wind(data)
 
             if self.ws_broadcast:
-                asyncio.run(self.ws_broadcast({
+                self.async_runner.submit(self.ws_broadcast({
                     'type': 'solar_wind_update',
                     'data': data
                 }))
+                self.logger.debug("Solar wind update broadcast submitted")
 
         except Exception as e:
             self.logger.error(f"Error processing solar wind message: {e}", exc_info=True)
@@ -491,6 +530,7 @@ class ObservationSubscriber:
         self.state = state
         self.ws_broadcast = ws_broadcast_callback
         self.logger = ServiceLogger("dashboard", "observation_subscriber")
+        self.async_runner = AsyncTaskRunner()  # For non-blocking async broadcasts
 
         self.subscriber_thread: Optional[threading.Thread] = None
         self.running = False
@@ -527,7 +567,7 @@ class ObservationSubscriber:
             self.state.add_observation(data, obs_type)
 
             if self.ws_broadcast:
-                asyncio.run(self.ws_broadcast({
+                self.async_runner.submit(self.ws_broadcast({
                     'type': 'observation_update',
                     'data': {
                         'obs_type': obs_type,
@@ -598,6 +638,7 @@ class SystemHealthSubscriber:
         self.state = state
         self.ws_broadcast = ws_broadcast_callback
         self.logger = ServiceLogger("dashboard", "health_subscriber")
+        self.async_runner = AsyncTaskRunner()  # For non-blocking async broadcasts
 
         self.subscriber_thread: Optional[threading.Thread] = None
         self.running = False
@@ -643,7 +684,7 @@ class SystemHealthSubscriber:
             self.state.add_alert(alert_data)
 
             if self.ws_broadcast:
-                asyncio.run(self.ws_broadcast({
+                self.async_runner.submit(self.ws_broadcast({
                     'type': 'alert',
                     'data': alert_data
                 }))

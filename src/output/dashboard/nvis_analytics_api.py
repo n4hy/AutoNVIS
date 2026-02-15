@@ -405,11 +405,8 @@ def create_app(
         app.include_router(spaceweather_router)
         app.include_router(control_router)
 
-        # Set WebSocket broadcast callbacks for all subscribers
-        for subscriber_name in ['grid', 'propagation', 'spaceweather', 'observation', 'health']:
-            subscriber = subscribers.get(subscriber_name)
-            if subscriber:
-                subscriber.ws_broadcast = api_backend.ws_manager.broadcast
+        # Note: WebSocket broadcast callbacks are now set during subscriber construction
+        # in main.py, before threads start. This ensures no messages are lost.
 
     # Setup templates and static files
     base_path = Path(__file__).parent
