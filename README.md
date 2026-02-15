@@ -430,7 +430,7 @@ Operational system for real-time Total Electron Content (TEC) measurement from G
 1. **NTRIP Client** - Connects to IGS NTRIP casters (www.igs-ip.net)
 2. **RTCM3 Parser** - Decodes binary RTCM3 messages (Types 1004, 1012, 1005)
 3. **TEC Calculator** - Computes ionospheric delay from dual-frequency observables
-4. **Message Queue** - Publishes to RabbitMQ `obs.gnss_tec` topic
+4. **Message Queue** - Publishes to RabbitMQ `obs.gnss_tec` topic (supports vhost configuration)
 5. **Filter Integration** - SR-UKF assimilates TEC into electron density grid
 
 **TEC Calculation Physics**:
@@ -464,7 +464,33 @@ where P₁, P₂ are GPS L1/L2 pseudoranges and TEC is in TECU (10¹⁶ el/m²)
 
 **Status**: ✅ Complete and tested (see `GNSS_TEC_QUICKSTART.md`)
 
-### 5. Python-C++ Integration Layer
+### 5. Web Dashboard (Real-Time Monitoring)
+
+Comprehensive web-based GUI for real-time ionospheric monitoring and system health:
+
+**Architecture**:
+- **FastAPI Backend** - REST API with WebSocket support for live updates
+- **Vanilla JavaScript Frontend** - Lightweight, responsive UI with Chart.js visualization
+- **Message Queue Subscribers** - Each subscriber runs in its own thread with dedicated RabbitMQ connection
+  - GridDataSubscriber - 3D electron density grid updates
+  - PropagationSubscriber - Frequency plans and coverage maps
+  - SpaceWeatherSubscriber - GOES X-ray, solar wind, geomagnetic data
+  - ObservationSubscriber - GNSS-TEC and ionosonde measurements
+  - SystemHealthSubscriber - Service status and performance metrics
+
+**Key Features**:
+- Real-time TEC, electron density, and space weather visualization
+- Interactive grid slice viewer (latitude, longitude, altitude cuts)
+- Frequency plan display with LUF/MUF boundaries
+- System health monitoring with service status indicators
+- WebSocket live updates for seamless data streaming
+
+**Threading Architecture**:
+Each subscriber creates its own RabbitMQ connection in its dedicated thread, ensuring thread safety and preventing connection sharing issues with pika (which is not thread-safe).
+
+**Status**: ✅ Complete and operational (see `src/output/dashboard/`)
+
+### 6. Python-C++ Integration Layer
 
 Seamless bridge between Python supervisor control and C++ numerical core using pybind11:
 
@@ -936,6 +962,17 @@ Configuration via YAML files in `config/`:
 - `production.yml` - Production settings
 - `development.yml` - Development overrides (create as needed)
 
+**RabbitMQ Configuration** (`config/production.yml`):
+```yaml
+services:
+  # RabbitMQ (Message Queue)
+  rabbitmq_host: localhost
+  rabbitmq_port: 5672
+  rabbitmq_user: autonvis
+  rabbitmq_password: <your-password>
+  rabbitmq_vhost: autonvis  # Virtual host for isolation
+```
+
 **Environment Variables**:
 ```bash
 # Set config file
@@ -975,17 +1012,20 @@ export LOG_LEVEL="DEBUG"
 
 **RabbitMQ Monitoring**:
 ```bash
-# View management UI
-http://localhost:15672 (guest/guest)
+# View management UI (credentials in config/production.yml)
+http://localhost:15672
 
-# List queues
-sudo rabbitmqctl list_queues
+# List queues (specify vhost if using custom vhost)
+sudo rabbitmqctl list_queues -p autonvis
 
 # List bindings
-sudo rabbitmqctl list_bindings | grep obs.gnss_tec
+sudo rabbitmqctl list_bindings -p autonvis | grep obs.gnss_tec
 
 # Monitor consumers
-sudo rabbitmqctl list_consumers
+sudo rabbitmqctl list_consumers -p autonvis
+
+# List connections
+sudo rabbitmqctl list_connections
 ```
 
 **Log Monitoring**:
@@ -1070,7 +1110,10 @@ sudo systemctl status autonvis-ingestion
 
 ### Production Checklist
 
-- [ ] Configure RabbitMQ with authentication
+- [ ] Configure RabbitMQ with authentication and vhost
+  - Set strong credentials in `config/production.yml`
+  - Create dedicated vhost (e.g., `autonvis`)
+  - Configure user permissions for the vhost
 - [ ] Set up log aggregation (Promtail/Loki)
 - [ ] Configure monitoring (Prometheus/Grafana)
 - [ ] Set up automated backups (state checkpoints)
@@ -1267,21 +1310,28 @@ stats = gnss_client.statistics
    - C++ brutal tests (7M state variables)
    - Outcome: 171/233 passing (73%), comprehensive coverage
 
+10. **Phase 10: Dashboard & Infrastructure Improvements** (Complete - Feb 14, 2026)
+   - Web-based GUI dashboard for real-time monitoring
+   - RabbitMQ vhost support across all services
+   - Fixed dashboard subscriber threading (per-subscriber connections)
+   - Thread-safe message queue integration
+   - Outcome: Production-ready dashboard with robust RabbitMQ infrastructure
+
 **In Progress** 🔄:
 
-10. **Phase 10: Test Failure Resolution** (In Progress)
+11. **Phase 11: Test Failure Resolution** (In Progress)
     - Fix remaining 62 test failures
     - Resolve environmental issues (RabbitMQ connectivity)
     - Address API mismatches
     - Target: Q1 2026
 
-11. **Phase 11: Ionosonde Integration** (In Planning)
+12. **Phase 12: Ionosonde Integration** (In Planning)
    - GIRO DIDBase client
    - Auto-scaled parameter ingestion (foF2, hmF2, M3000F2)
    - Quality control and validation
    - Target: Q2 2026
 
-10. **Phase 10: Historical Validation** (In Planning)
+13. **Phase 13: Historical Validation** (In Planning)
     - 2024-2025 storm event replay
     - RMSE analysis vs ground truth
     - Parameter tuning (localization radius, inflation bounds)
@@ -1289,26 +1339,26 @@ stats = gnss_client.statistics
 
 **Future Phases** 📋:
 
-11. **Phase 11: Offline Smoother Implementation**
+14. **Phase 14: Offline Smoother Implementation**
     - RTS backward pass (square-root formulation)
     - State history persistence (HDF5)
     - Lag-3 fixed-lag smoother
     - Target: Q3 2026
 
-12. **Phase 12: PHaRLAP Integration**
+15. **Phase 15: PHaRLAP Integration**
     - MATLAB/Fortran wrapper
     - Grid conversion (Ne → refractive index)
     - Ray tracing automation
     - LUF/MUF product generation
     - Target: Q3 2026
 
-13. **Phase 13: Performance Optimization**
+16. **Phase 16: Performance Optimization**
     - GPU acceleration (CUDA/Eigen)
     - Parallel observation processing
     - Sparse matrix optimizations
     - Target: Q4 2026
 
-14. **Phase 14: Production Deployment**
+17. **Phase 17: Production Deployment**
     - Container orchestration (Kubernetes)
     - Monitoring and alerting (Prometheus/Grafana)
     - Automated backups and recovery
@@ -1336,6 +1386,7 @@ stats = gnss_client.statistics
 - ✅ **Feb 12, 2026**: Full system integration complete
 - ✅ **Feb 13, 2026**: GNSS-TEC ingestion operational
 - ✅ **Feb 14, 2026**: Comprehensive test suite complete (233 tests)
+- ✅ **Feb 14, 2026**: Dashboard & RabbitMQ vhost support complete
 - 🔄 **Feb-Mar 2026**: Test failure resolution (ongoing)
 - 🔄 **Mar 2026**: Ionosonde integration (planned)
 - 🔄 **Apr 2026**: Historical validation (planned)
