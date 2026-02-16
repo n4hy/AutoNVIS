@@ -34,6 +34,9 @@ class TECMapWidget(QWidget):
         self.show_political = False
         self.political_lines = []  # Store political boundary plot items
 
+        # Color scaling mode: 'fixed', 'auto', 'percentile'
+        self.scale_mode = 'percentile'  # Default to percentile for best visibility
+
         self._setup_ui()
         self._create_political_boundaries()
 
@@ -51,6 +54,14 @@ class TECMapWidget(QWidget):
         self.layer_combo.addItems(['TEC', 'Anomaly', 'hmF2', 'NmF2'])
         self.layer_combo.currentTextChanged.connect(self._on_layer_changed)
         control_layout.addWidget(self.layer_combo)
+
+        control_layout.addWidget(QLabel("  Scale:"))
+
+        self.scale_combo = QComboBox()
+        self.scale_combo.addItems(['Percentile', 'Auto', 'Fixed'])
+        self.scale_combo.setToolTip("Percentile: 5th-95th (best detail)\nAuto: actual min-max\nFixed: preset range")
+        self.scale_combo.currentTextChanged.connect(self._on_scale_changed)
+        control_layout.addWidget(self.scale_combo)
 
         control_layout.addStretch()
 
@@ -165,8 +176,8 @@ class TECMapWidget(QWidget):
         # Set transform to map image pixels to coordinates
         self.tec_image.setRect(x_min, y_min, x_range, y_range)
 
-        # Update colorbar based on layer
-        self._update_colorbar()
+        # Update colorbar based on layer and data
+        self._update_colorbar(data)
 
         # Update info label
         timestamp = grid_data.get('timestamp', 'Unknown')
@@ -178,31 +189,74 @@ class TECMapWidget(QWidget):
         else:
             self.info_label.setText(f"{timestamp} | No valid data")
 
-    def _update_colorbar(self):
-        """Update colorbar for current layer."""
+    def _update_colorbar(self, data=None):
+        """Update colorbar for current layer and scale mode."""
         layer = self.current_layer.lower()
 
-        if layer == 'tec':
-            self.colorbar.setLevels((0, 100))
-            self.colormap = pg.colormap.get('plasma')
+        # Fixed ranges (defaults)
+        fixed_ranges = {
+            'tec': (0, 100),
+            'anomaly': (-20, 20),
+            'hmf2': (200, 500),
+            'nmf2': (0, 1e12),
+        }
 
-        elif layer == 'anomaly':
-            self.colorbar.setLevels((-20, 20))
-            self.colormap = pg.colormap.get('CET-D1')  # Diverging colormap
+        # Colormaps
+        colormaps = {
+            'tec': 'plasma',
+            'anomaly': 'CET-D1',
+            'hmf2': 'viridis',
+            'nmf2': 'inferno',
+        }
 
-        elif layer in ('hmf2', 'hmF2'):
-            self.colorbar.setLevels((200, 500))
-            self.colormap = pg.colormap.get('viridis')
+        # Normalize layer name
+        layer_key = layer
+        if layer_key == 'hmf2':
+            layer_key = 'hmf2'
+        elif layer_key == 'nmf2':
+            layer_key = 'nmf2'
 
-        elif layer in ('nmf2', 'NmF2'):
-            self.colorbar.setLevels((0, 1e12))
-            self.colormap = pg.colormap.get('inferno')
-
+        # Get colormap
+        cmap_name = colormaps.get(layer_key, 'plasma')
+        self.colormap = pg.colormap.get(cmap_name)
         self.tec_image.setColorMap(self.colormap)
+
+        # Calculate range based on scale mode
+        if data is not None and len(data) > 0:
+            valid_data = data[~np.isnan(data)]
+            if len(valid_data) > 0:
+                if self.scale_mode == 'auto':
+                    # Full data range
+                    vmin = float(np.min(valid_data))
+                    vmax = float(np.max(valid_data))
+                elif self.scale_mode == 'percentile':
+                    # 5th to 95th percentile (avoids outlier saturation)
+                    vmin = float(np.percentile(valid_data, 5))
+                    vmax = float(np.percentile(valid_data, 95))
+                else:
+                    # Fixed range
+                    vmin, vmax = fixed_ranges.get(layer_key, (0, 100))
+
+                # Ensure valid range
+                if vmax <= vmin:
+                    vmax = vmin + 1
+
+                self.colorbar.setLevels((vmin, vmax))
+                self.tec_image.setLevels((vmin, vmax))
+                return
+
+        # Fallback to fixed range
+        vmin, vmax = fixed_ranges.get(layer_key, (0, 100))
+        self.colorbar.setLevels((vmin, vmax))
 
     def _on_layer_changed(self, layer_name: str):
         """Handle layer selection change."""
         self.current_layer = layer_name.lower()
+        self._refresh_display()
+
+    def _on_scale_changed(self, scale_name: str):
+        """Handle scale mode change."""
+        self.scale_mode = scale_name.lower()
         self._refresh_display()
 
     def _on_click(self, event):
