@@ -2,7 +2,7 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
-**Version:** 0.1.0 | **Status:** ✅ Production Ready (Filter Core + TEC Display) | **Last Updated:** February 16, 2026
+**Version:** 0.1.0 | **Status:** ✅ Production Ready (Filter Core + TEC & Space Weather Displays) | **Last Updated:** February 16, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-73%25%20passing-yellow)]()
@@ -28,7 +28,8 @@
   - [GNSS-TEC Real-Time Ingestion](#4-gnss-tec-real-time-ingestion)
   - [Web Dashboard](#5-web-dashboard-real-time-monitoring)
   - [PyQt TEC Display](#6-pyqt-tec-display-application)
-  - [Python-C++ Integration Layer](#7-python-c-integration-layer)
+  - [PyQt Space Weather Display](#7-pyqt-space-weather-display-application)
+  - [Python-C++ Integration Layer](#8-python-c-integration-layer)
 - [Key Innovations](#key-innovations)
 - [Operational Capabilities](#operational-capabilities)
 - [Building and Testing](#building-and-testing)
@@ -500,6 +501,7 @@ Real-time desktop visualization of global ionospheric TEC (Total Electron Conten
 - **Global TEC Map**: Color-coded world map showing electron density
   - Red/yellow = high TEC = good HF propagation
   - Blue/purple = low TEC = reduced HF propagation
+  - **Political Boundaries**: Toggle black dashed country borders
 - **TEC Time Series**: 24-hour history of global mean TEC
 - **Ionosphere Profiles**: hmF2 (layer height) and NmF2 (peak density) trends
 - **Connection Status**: Real-time data feed status
@@ -525,8 +527,15 @@ PyQt TEC Display (desktop window)
 - **Historical Backfill**: Fetches 6 hours of data on startup for immediate visualization
 - **Real-Time Updates**: Automatic 10-minute refresh from NOAA GloTEC
 - **Layer Selection**: Switch between TEC, Anomaly, hmF2, NmF2 views
+- **Political Boundaries**: Toggle black dashed country borders for geographic reference
+- **Scale Modes**: Percentile (5th-95th), Auto, or Fixed color scaling
 - **Point Tracking**: Click map to track TEC at specific location
 - **Dark Theme**: Professional appearance for operational use
+
+**Color Scale Modes**:
+- **Percentile** (default): Uses 5th-95th percentile range for optimal contrast
+- **Auto**: Full data range (min-max)
+- **Fixed**: Preset ranges per layer type (e.g., 0-100 TECU for TEC)
 
 **Data Source**: NOAA SWPC GloTEC
 - URL: `https://services.swpc.noaa.gov/products/glotec/`
@@ -551,7 +560,82 @@ PyQt TEC Display (desktop window)
 
 **Status**: ✅ Complete and operational
 
-### 7. Python-C++ Integration Layer
+### 7. PyQt Space Weather Display Application
+
+Real-time desktop visualization of GOES X-ray solar flux for solar flare monitoring using PyQt6 and pyqtgraph.
+
+**What It Shows**:
+- **Flare Indicator**: Large visual display of current solar flare class (A/B/C/M/X)
+  - Color-coded by intensity (green=quiet, red=major flare)
+  - QUIET/SHOCK mode indicator for HF operations
+- **X-Ray Time Series**: 24-hour flux history with dual channels
+  - Long wavelength (0.1-0.8 nm): Primary flare classification
+  - Short wavelength (0.05-0.4 nm): Higher energy indicator
+- **Flare Class Thresholds**: Horizontal lines at B/C/M/X boundaries
+- **Connection Status**: Real-time data feed status
+
+**Architecture**:
+```
+NOAA SWPC GOES X-Ray (Internet)
+        ↓ HTTP/JSON (every 1 min)
+Ingestion Service
+        ↓ RabbitMQ
+Dashboard Service (port 8081)
+        ↓ WebSocket
+PyQt Space Weather Display (desktop window)
+```
+
+**Quick Start**:
+```bash
+# One-command launch (starts all services + GUI)
+./run_AutoNVIS_spaceweather.sh
+```
+
+**Key Features**:
+- **Historical Backfill**: Loads ~10 hours of X-ray data on startup via batch message
+- **Real-Time Updates**: Automatic 1-minute refresh from NOAA GOES
+- **Dual-Channel Display**: Both short and long wavelength X-ray channels
+- **Autoscale Toggle**: Switch between fixed (1e-9 to 1e-3) and auto Y-axis
+- **Normalized View**: Show % deviation from mean to reveal small variations
+- **Batch Loading**: Historical data loads as single update (no flicker)
+- **Dark Theme**: Professional appearance matching TEC display
+
+**Flare Classes**:
+| Class | Flux Range (W/m²) | Description |
+|-------|-------------------|-------------|
+| A | < 1e-7 | Very Quiet |
+| B | 1e-7 to 1e-6 | Quiet |
+| C | 1e-6 to 1e-5 | Minor |
+| M | 1e-5 to 1e-4 | Moderate (triggers SHOCK mode) |
+| X | > 1e-4 | Major |
+
+**Data Source**: NOAA SWPC GOES X-Ray
+- URL: `https://services.swpc.noaa.gov/json/goes/primary/xrays-7-day.json`
+- Format: JSON with timestamp, flux values, satellite ID
+- Update cadence: 1 minute
+
+**Components**:
+- `src/visualization/pyqt/spaceweather/main.py` - Application entry point
+- `src/visualization/pyqt/spaceweather/main_window.py` - Main window layout
+- `src/visualization/pyqt/spaceweather/flare_indicator_widget.py` - Flare class display
+- `src/visualization/pyqt/spaceweather/xray_plot_widget.py` - X-ray time series
+- `src/ingestion/space_weather/goes_xray_client.py` - GOES X-ray fetcher
+- `run_AutoNVIS_spaceweather.sh` - One-command launcher script
+
+**Running Both Displays**:
+Both TEC and Space Weather displays can run simultaneously using separate ports:
+```bash
+# Terminal 1: TEC Display (port 8080)
+./run_AutoNVIS_tec_display.sh
+
+# Terminal 2: Space Weather Display (port 8081)
+./run_AutoNVIS_spaceweather.sh
+```
+The launcher scripts detect shared ingestion services and avoid conflicts.
+
+**Status**: ✅ Complete and operational
+
+### 8. Python-C++ Integration Layer
 
 Seamless bridge between Python supervisor control and C++ numerical core using pybind11:
 
@@ -1350,14 +1434,20 @@ stats = gnss_client.statistics
    - Thread-safe message queue integration
    - Outcome: Production-ready dashboard with robust RabbitMQ infrastructure
 
-11. **Phase 11: PyQt TEC Display Application** (Complete - Feb 16, 2026)
-   - Real-time global TEC visualization with pyqtgraph
-   - GloTEC data ingestion from NOAA SWPC (10-minute updates)
-   - Historical backfill (6 hours on startup)
-   - Time series and ionosphere profile displays
-   - WebSocket integration with dashboard service
-   - One-command launcher script
-   - Outcome: Production-ready desktop TEC visualization
+11. **Phase 11: PyQt Visualization Applications** (Complete - Feb 16, 2026)
+   - **TEC Display**: Real-time global TEC visualization with pyqtgraph
+     - GloTEC data ingestion from NOAA SWPC (10-minute updates)
+     - Historical backfill (6 hours on startup)
+     - Time series and ionosphere profile displays
+     - Political boundaries toggle (black dashed country borders)
+     - Adaptive color scale modes (Percentile/Auto/Fixed)
+   - **Space Weather Display**: Real-time GOES X-ray monitoring
+     - Dual-channel X-ray flux (short + long wavelength)
+     - Flare class indicator (A/B/C/M/X) with QUIET/SHOCK mode
+     - Autoscale toggle and normalized view (% deviation)
+     - Batch historical loading (no flicker during startup)
+   - Both displays can run simultaneously on separate ports (8080/8081)
+   - Outcome: Production-ready desktop visualization suite
 
 **In Progress** 🔄:
 
@@ -1429,7 +1519,7 @@ stats = gnss_client.statistics
 - ✅ **Feb 13, 2026**: GNSS-TEC ingestion operational
 - ✅ **Feb 14, 2026**: Comprehensive test suite complete (233 tests)
 - ✅ **Feb 14, 2026**: Dashboard & RabbitMQ vhost support complete
-- ✅ **Feb 16, 2026**: PyQt TEC Display application complete
+- ✅ **Feb 16, 2026**: PyQt TEC Display and Space Weather Display applications complete
 - 🔄 **Feb-Mar 2026**: Test failure resolution (ongoing)
 - 🔄 **Mar 2026**: Ionosonde integration (planned)
 - 🔄 **Apr 2026**: Historical validation (planned)
@@ -1847,7 +1937,7 @@ This ensures the system can handle real-world solar storms and production worklo
 
 ---
 
-**Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC Display)
+**Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC & Space Weather Displays)
 **Last Updated**: February 16, 2026
 **Version**: 0.1.0
-**Next Milestone**: Test Failure Resolution + Ionosonde Integration (Phases 11-12)
+**Next Milestone**: Test Failure Resolution + Ionosonde Integration (Phases 12-13)
