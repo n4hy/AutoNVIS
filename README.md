@@ -564,7 +564,7 @@ Real-time desktop visualization of GOES X-ray solar flux for solar flare monitor
 - **Flare Indicator**: Large visual display of current solar flare class (A/B/C/M/X)
   - Color-coded by intensity (green=quiet, red=major flare)
   - QUIET/SHOCK mode indicator for HF operations
-- **X-Ray Time Series**: 24-hour flux history with dual channels
+- **X-Ray Time Series**: Configurable duration flux history (up to 7 days) with dual channels
   - Long wavelength (0.1-0.8 nm): Primary flare classification
   - Short wavelength (0.05-0.4 nm): Higher energy indicator
 - **Flare Class Thresholds**: Horizontal lines at B/C/M/X boundaries
@@ -585,7 +585,8 @@ No RabbitMQ. No dashboard servers. No WebSocket. Just data.
 
 **Key Features**:
 - **Direct NOAA Fetch**: Fetches GOES X-ray data directly from NOAA (no middleware)
-- **Historical Backfill**: Loads 24 hours of X-ray data on startup
+- **Historical Backfill**: Loads up to 7 days of X-ray data on startup
+- **Configurable Duration**: Set display duration from 1 hour to 7 days via toolbar controls
 - **Real-Time Updates**: Automatic 60-second refresh
 - **Dual-Channel Display**: Both short and long wavelength X-ray channels
 - **Autoscale Toggle**: Switch between fixed (1e-9 to 1e-3) and auto Y-axis
@@ -602,8 +603,9 @@ No RabbitMQ. No dashboard servers. No WebSocket. Just data.
 | X | > 1e-4 | Major |
 
 **Data Source**: NOAA SWPC GOES X-Ray
-- URL: `https://services.swpc.noaa.gov/json/goes/primary/xrays-1-day.json`
+- URL: `https://services.swpc.noaa.gov/json/goes/primary/xrays-7-day.json`
 - Format: JSON with timestamp, flux values, satellite ID
+- Data available: Up to 7 days of history
 - Update cadence: 1 minute (NOAA), polled every 60 seconds
 
 **Components**:
