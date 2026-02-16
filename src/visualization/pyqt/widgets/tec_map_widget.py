@@ -20,6 +20,7 @@ class TECMapWidget(QWidget):
     - Click to select point
     - Anomaly overlay option
     - Quality flag overlay
+    - Political boundaries overlay
     """
 
     point_selected = pyqtSignal(float, float)  # lat, lon
@@ -30,8 +31,11 @@ class TECMapWidget(QWidget):
 
         self.current_layer = 'tec'  # tec, anomaly, hmF2, NmF2
         self.last_grid_data = None
+        self.show_political = False
+        self.political_lines = []  # Store political boundary plot items
 
         self._setup_ui()
+        self._create_political_boundaries()
 
     def _setup_ui(self):
         """Create and arrange UI elements."""
@@ -236,3 +240,106 @@ class TECMapWidget(QWidget):
             self.crosshair_h.setPos(lat)
             self.crosshair_v.setVisible(True)
             self.crosshair_h.setVisible(True)
+
+    def _create_political_boundaries(self):
+        """Create political boundary line items (hidden by default)."""
+        # Simplified world coastlines and major borders
+        # Format: list of (lon, lat) coordinate pairs, None separates segments
+        boundaries = self._get_world_boundaries()
+
+        pen = pg.mkPen('#ffffff', width=1, style=pg.QtCore.Qt.PenStyle.DashLine)
+
+        for segment in boundaries:
+            if len(segment) > 1:
+                lons = [p[0] for p in segment]
+                lats = [p[1] for p in segment]
+                line = self.plot_widget.plot(lons, lats, pen=pen)
+                line.setVisible(False)
+                self.political_lines.append(line)
+
+    def _get_world_boundaries(self):
+        """Return simplified world coastline/border coordinates."""
+        # Simplified continent outlines and major borders
+        # Each segment is a list of (lon, lat) tuples
+        return [
+            # North America coastline (simplified)
+            [(-168, 65), (-165, 60), (-170, 55), (-165, 55), (-155, 58), (-150, 60),
+             (-140, 60), (-135, 55), (-125, 50), (-125, 45), (-120, 35), (-115, 30),
+             (-110, 25), (-105, 20), (-95, 18), (-90, 20), (-85, 22), (-80, 25),
+             (-82, 30), (-80, 32), (-75, 35), (-70, 40), (-70, 45), (-65, 45),
+             (-60, 50), (-55, 50), (-55, 55), (-60, 55), (-65, 60), (-70, 65),
+             (-80, 70), (-90, 70), (-100, 70), (-120, 72), (-140, 70), (-160, 70), (-168, 65)],
+
+            # South America coastline
+            [(-80, 10), (-75, 10), (-70, 12), (-65, 10), (-60, 5), (-50, 0),
+             (-45, -5), (-40, -10), (-40, -20), (-45, -25), (-50, -30), (-55, -35),
+             (-60, -40), (-65, -45), (-70, -50), (-75, -55), (-70, -55), (-70, -45),
+             (-75, -40), (-75, -30), (-70, -20), (-75, -15), (-80, -5), (-80, 0), (-80, 10)],
+
+            # Europe coastline
+            [(-10, 35), (-5, 35), (0, 40), (5, 45), (10, 45), (15, 45), (20, 40),
+             (25, 40), (30, 45), (30, 50), (25, 55), (20, 55), (15, 55), (10, 55),
+             (10, 60), (15, 65), (20, 70), (25, 70), (30, 70), (25, 65), (20, 60),
+             (15, 58), (10, 58), (5, 50), (0, 50), (-5, 45), (-10, 45), (-10, 35)],
+
+            # Africa coastline
+            [(-15, 35), (-5, 35), (10, 35), (15, 30), (30, 30), (35, 25), (40, 15),
+             (50, 10), (45, 0), (40, -5), (35, -10), (30, -20), (25, -30), (20, -35),
+             (25, -35), (30, -30), (35, -25), (40, -20), (45, -25), (35, -35),
+             (20, -35), (15, -30), (10, -5), (5, 5), (0, 5), (-5, 10), (-15, 15),
+             (-20, 15), (-15, 25), (-15, 35)],
+
+            # Asia coastline (simplified)
+            [(30, 40), (40, 40), (50, 40), (55, 45), (60, 45), (70, 40), (75, 35),
+             (80, 30), (85, 25), (90, 25), (95, 20), (100, 15), (105, 10), (110, 20),
+             (120, 25), (125, 30), (130, 35), (135, 35), (140, 40), (145, 45),
+             (145, 50), (140, 55), (135, 55), (130, 50), (125, 45), (120, 45),
+             (115, 40), (110, 40), (105, 45), (100, 50), (90, 55), (80, 60),
+             (70, 65), (60, 70), (50, 70), (40, 65), (35, 60), (30, 55), (30, 45), (30, 40)],
+
+            # Australia coastline
+            [(115, -20), (120, -15), (130, -12), (140, -12), (145, -15), (150, -20),
+             (155, -25), (150, -30), (150, -35), (145, -40), (140, -38), (135, -35),
+             (130, -32), (125, -30), (120, -30), (115, -32), (115, -25), (115, -20)],
+
+            # US-Canada border (49th parallel)
+            [(-125, 49), (-120, 49), (-115, 49), (-110, 49), (-105, 49), (-100, 49),
+             (-95, 49), (-90, 49), (-85, 49), (-80, 45), (-75, 45)],
+
+            # US-Mexico border (simplified)
+            [(-115, 32), (-110, 31), (-105, 30), (-100, 26), (-97, 26)],
+
+            # Russia-China border (simplified)
+            [(130, 50), (125, 50), (120, 50), (115, 45), (110, 45), (100, 45), (90, 45), (80, 45)],
+
+            # India outline
+            [(68, 25), (70, 20), (72, 15), (78, 8), (82, 8), (88, 22), (92, 25),
+             (88, 28), (80, 30), (75, 32), (72, 30), (68, 25)],
+
+            # Japan
+            [(130, 32), (132, 34), (135, 35), (140, 38), (142, 42), (145, 44),
+             (145, 42), (140, 36), (137, 34), (135, 33), (130, 32)],
+
+            # UK
+            [(-5, 50), (0, 51), (2, 52), (0, 55), (-3, 58), (-5, 58), (-6, 55), (-5, 50)],
+
+            # Greenland
+            [(-45, 60), (-40, 65), (-35, 70), (-25, 75), (-20, 80), (-30, 82),
+             (-45, 82), (-55, 80), (-60, 75), (-55, 70), (-50, 65), (-45, 60)],
+        ]
+
+    def set_political_visible(self, visible: bool):
+        """
+        Toggle political boundary visibility.
+
+        Args:
+            visible: True to show boundaries, False to hide
+        """
+        self.show_political = visible
+        for line in self.political_lines:
+            line.setVisible(visible)
+
+    def toggle_political(self):
+        """Toggle political boundaries on/off."""
+        self.set_political_visible(not self.show_political)
+        return self.show_political

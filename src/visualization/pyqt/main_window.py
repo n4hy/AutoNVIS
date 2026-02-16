@@ -119,6 +119,16 @@ class TECDisplayMainWindow(QMainWindow):
 
         toolbar.addSeparator()
 
+        # Political boundaries toggle
+        self.political_action = QAction("Political", self)
+        self.political_action.setCheckable(True)
+        self.political_action.setChecked(False)
+        self.political_action.setToolTip("Toggle political boundaries overlay")
+        self.political_action.triggered.connect(self._on_political_toggle)
+        toolbar.addAction(self.political_action)
+
+        toolbar.addSeparator()
+
         # Clear data action
         clear_action = QAction("Clear Data", self)
         clear_action.triggered.connect(self._on_clear_data)
@@ -222,6 +232,10 @@ class TECDisplayMainWindow(QMainWindow):
                 self.ws_client.start()
         else:
             self.ws_client.stop()
+
+    def _on_political_toggle(self, checked: bool):
+        """Handle political boundaries toggle."""
+        self.tec_map_widget.set_political_visible(checked)
 
     def _on_clear_data(self):
         """Clear all data from widgets."""
