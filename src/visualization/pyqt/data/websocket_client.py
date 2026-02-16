@@ -26,6 +26,7 @@ class WebSocketWorker(QObject):
     # Data signals
     glotec_received = pyqtSignal(dict)
     xray_received = pyqtSignal(dict)
+    xray_batch_received = pyqtSignal(dict)  # Historical batch
     grid_received = pyqtSignal(dict)
     spaceweather_received = pyqtSignal(dict)
 
@@ -102,6 +103,8 @@ class WebSocketWorker(QObject):
                 self.glotec_received.emit(data.get('data', {}))
             elif msg_type == 'xray_update':
                 self.xray_received.emit(data.get('data', {}))
+            elif msg_type == 'xray_historical_batch':
+                self.xray_batch_received.emit(data.get('data', {}))
             elif msg_type == 'grid_update':
                 self.grid_received.emit(data.get('data', {}))
             elif msg_type in ('solar_wind_update', 'mode_change'):
@@ -143,6 +146,7 @@ class DashboardWebSocketClient(QObject):
     error = pyqtSignal(str)
     glotec_received = pyqtSignal(dict)
     xray_received = pyqtSignal(dict)
+    xray_batch_received = pyqtSignal(dict)  # Historical batch
     grid_received = pyqtSignal(dict)
     spaceweather_received = pyqtSignal(dict)
 
@@ -185,6 +189,7 @@ class DashboardWebSocketClient(QObject):
         self.worker.error.connect(self.error.emit)
         self.worker.glotec_received.connect(self.glotec_received.emit)
         self.worker.xray_received.connect(self.xray_received.emit)
+        self.worker.xray_batch_received.connect(self.xray_batch_received.emit)
         self.worker.grid_received.connect(self.grid_received.emit)
         self.worker.spaceweather_received.connect(self.spaceweather_received.emit)
 

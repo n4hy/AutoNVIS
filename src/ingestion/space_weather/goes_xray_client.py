@@ -257,28 +257,36 @@ class GOESXRayClient:
                         except (ValueError, KeyError):
                             continue
 
-                    self.logger.info(f"Publishing {len(historical_records)} historical X-ray records...")
+                    self.logger.info(f"Publishing {len(historical_records)} historical X-ray records as batch...")
 
+                    # Build batch of all historical records
+                    batch_records = []
                     for record in historical_records:
                         try:
                             flux = float(record.get('flux', 0))
                             flare_class = self.format_flare_class(flux)
 
-                            hist_data = {
+                            batch_records.append({
                                 'timestamp': record.get('time_tag'),
                                 'flux_short': flux,
                                 'flux_long': flux,
                                 'flare_class': flare_class,
                                 'm1_or_higher': self.is_m1_or_higher(flux),
-                                'source': 'GOES-Historical'
-                            }
-
-                            self.publish_to_queue(hist_data)
-                            await asyncio.sleep(0.05)  # Small delay to avoid queue flooding
-
+                            })
                         except Exception as e:
                             self.logger.debug(f"Skip historical record: {e}")
                             continue
+
+                    # Send entire batch as single message
+                    if batch_records:
+                        batch_data = {
+                            'type': 'historical_batch',
+                            'source': 'GOES-Historical',
+                            'records': batch_records,
+                            'count': len(batch_records)
+                        }
+                        self.publish_to_queue(batch_data)
+                        self.logger.info(f"Published {len(batch_records)} historical records as batch")
 
                     self.logger.info("Historical X-ray backfill complete")
 

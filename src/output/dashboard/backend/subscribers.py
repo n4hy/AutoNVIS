@@ -408,15 +408,31 @@ class SpaceWeatherSubscriber:
     def _on_xray(self, message: Message):
         """Handle X-ray flux message."""
         try:
-            data = {**message.data, 'timestamp': message.timestamp}
-            self.state.update_xray_flux(data)
+            data = message.data
 
-            if self.ws_broadcast:
-                self.async_runner.submit(self.ws_broadcast({
-                    'type': 'xray_update',
-                    'data': data
-                }))
-                self.logger.debug(f"X-ray update broadcast submitted: flux={data.get('flux_short', 0):.2e}")
+            # Check if this is a historical batch
+            if data.get('type') == 'historical_batch':
+                # Broadcast batch for PyQt to process all at once
+                if self.ws_broadcast:
+                    self.async_runner.submit(self.ws_broadcast({
+                        'type': 'xray_historical_batch',
+                        'data': {
+                            'records': data.get('records', []),
+                            'count': data.get('count', 0)
+                        }
+                    }))
+                    self.logger.info(f"X-ray historical batch broadcast: {data.get('count', 0)} records")
+            else:
+                # Regular real-time update
+                data = {**data, 'timestamp': message.timestamp}
+                self.state.update_xray_flux(data)
+
+                if self.ws_broadcast:
+                    self.async_runner.submit(self.ws_broadcast({
+                        'type': 'xray_update',
+                        'data': data
+                    }))
+                    self.logger.debug(f"X-ray update broadcast submitted: flux={data.get('flux_short', 0):.2e}")
 
         except Exception as e:
             self.logger.error(f"Error processing X-ray message: {e}", exc_info=True)

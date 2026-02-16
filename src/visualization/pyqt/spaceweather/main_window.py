@@ -196,6 +196,7 @@ class SpaceWeatherMainWindow(QMainWindow):
 
         # Connect X-ray signals
         ws_client.xray_received.connect(self._on_xray_update)
+        ws_client.xray_batch_received.connect(self._on_xray_batch)
 
         # Connect status signals
         ws_client.connected.connect(self._on_connected)
@@ -224,11 +225,30 @@ class SpaceWeatherMainWindow(QMainWindow):
         flare_class = data.get('flare_class', '--')
         m1_threshold = data.get('m1_or_higher', False)
         mode = "SHOCK" if m1_threshold else "QUIET"
-        mode_color = "#ff4444" if m1_threshold else "#44ff44"
 
         self.statusBar().showMessage(
             f"Connected | Flare: {flare_class} | Mode: {mode} | "
             f"Updates: {self.data_manager.data_count}"
+        )
+
+    @pyqtSlot(dict)
+    def _on_xray_batch(self, data: dict):
+        """Handle historical X-ray batch - load all at once."""
+        count = data.get('count', 0)
+        self.statusBar().showMessage(f"Loading {count} historical records...")
+
+        # Load batch into plot (single update)
+        self.xray_plot.on_xray_batch(data)
+
+        # Update flare indicator with most recent record
+        records = data.get('records', [])
+        if records:
+            latest = records[-1]
+            self.flare_indicator.on_xray_update(latest)
+            self.data_manager.update_xray(latest)
+
+        self.statusBar().showMessage(
+            f"Connected | Historical data loaded ({count} records) | Live updates active"
         )
 
     @pyqtSlot()

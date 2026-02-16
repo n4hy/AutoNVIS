@@ -150,6 +150,36 @@ class XRayPlotWidget(QWidget):
         if timestamp and flux:
             self.add_data_point(timestamp, flux)
 
+    @pyqtSlot(dict)
+    def on_xray_batch(self, data: dict):
+        """Handle historical X-ray batch - load all at once without individual updates."""
+        records = data.get('records', [])
+        if not records:
+            return
+
+        # Process all records without updating plot each time
+        for record in records:
+            timestamp = record.get('timestamp')
+            flux = record.get('flux_long') or record.get('flux_short')
+
+            if timestamp and flux:
+                try:
+                    ts = datetime.fromisoformat(timestamp.rstrip('Z'))
+                    ts_float = ts.timestamp()
+                except (ValueError, AttributeError):
+                    continue
+
+                self.times.append(ts_float)
+                self.flux_values.append(flux)
+
+        # Trim to max points
+        if len(self.times) > self.max_points:
+            self.times = self.times[-self.max_points:]
+            self.flux_values = self.flux_values[-self.max_points:]
+
+        # Single update after all data loaded
+        self._update_plot()
+
     def clear(self):
         """Clear all data."""
         self.times.clear()
