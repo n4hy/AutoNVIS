@@ -6,7 +6,7 @@ Main window for real-time solar X-ray flux visualization.
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QSplitter, QToolBar, QMessageBox
+    QSplitter, QToolBar, QMessageBox, QSpinBox, QLabel
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot
 from PyQt6.QtGui import QAction
@@ -173,6 +173,49 @@ class SpaceWeatherMainWindow(QMainWindow):
 
         toolbar.addSeparator()
 
+        # Duration controls
+        duration_label = QLabel("Duration:")
+        duration_label.setStyleSheet("color: #ddd; padding: 0 5px;")
+        toolbar.addWidget(duration_label)
+
+        self.days_spinbox = QSpinBox()
+        self.days_spinbox.setRange(0, 100)
+        self.days_spinbox.setValue(1)
+        self.days_spinbox.setSuffix(" days")
+        self.days_spinbox.setToolTip("Days of data to display (0-100)")
+        self.days_spinbox.setStyleSheet("""
+            QSpinBox {
+                background-color: #3d3d3d;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 3px 8px;
+                color: #ddd;
+                min-width: 70px;
+            }
+        """)
+        self.days_spinbox.valueChanged.connect(self._on_duration_changed)
+        toolbar.addWidget(self.days_spinbox)
+
+        self.hours_spinbox = QSpinBox()
+        self.hours_spinbox.setRange(0, 23)
+        self.hours_spinbox.setValue(0)
+        self.hours_spinbox.setSuffix(" hrs")
+        self.hours_spinbox.setToolTip("Hours of data to display (0-23)")
+        self.hours_spinbox.setStyleSheet("""
+            QSpinBox {
+                background-color: #3d3d3d;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 3px 8px;
+                color: #ddd;
+                min-width: 60px;
+            }
+        """)
+        self.hours_spinbox.valueChanged.connect(self._on_duration_changed)
+        toolbar.addWidget(self.hours_spinbox)
+
+        toolbar.addSeparator()
+
         # Clear data action
         clear_action = QAction("Clear Data", self)
         clear_action.triggered.connect(self._on_clear_data)
@@ -311,6 +354,23 @@ class SpaceWeatherMainWindow(QMainWindow):
             self.statusBar().showMessage("Normalized view: showing % deviation from mean")
         else:
             self.statusBar().showMessage("Absolute view: showing actual flux values")
+
+    def _on_duration_changed(self):
+        """Handle duration change."""
+        days = self.days_spinbox.value()
+        hours = self.hours_spinbox.value()
+
+        # Ensure at least 1 hour
+        if days == 0 and hours == 0:
+            hours = 1
+            self.hours_spinbox.setValue(1)
+
+        self.xray_plot.set_duration(days=days, hours=hours)
+
+        if days > 0:
+            self.statusBar().showMessage(f"Duration set to {days} days {hours} hours")
+        else:
+            self.statusBar().showMessage(f"Duration set to {hours} hours")
 
     def _on_clear_data(self):
         """Clear all data from widgets."""

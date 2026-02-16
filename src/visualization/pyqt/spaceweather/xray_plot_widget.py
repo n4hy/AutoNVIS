@@ -17,16 +17,21 @@ class XRayPlotWidget(QWidget):
     X-ray flux time series with flare class threshold lines.
 
     Shows:
-    - 24-hour X-ray flux history (logarithmic scale)
+    - Configurable duration X-ray flux history (logarithmic scale)
     - Both short (0.05-0.4nm) and long (0.1-0.8nm) wavelength channels
     - Horizontal lines at A/B/C/M/X class boundaries
     - Current flux value highlighted
     """
 
+    MAX_DAYS = 100  # Maximum allowed duration
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.max_points = 2000  # ~24 hours at 1-min intervals
+        # Duration settings (default 1 day)
+        self.duration_days = 1
+        self.duration_hours = 0
+        self._update_max_points()
 
         # Data buffers - both channels
         self.times = []
@@ -40,6 +45,40 @@ class XRayPlotWidget(QWidget):
         self.normalized_view = False
 
         self._setup_ui()
+
+    def _update_max_points(self):
+        """Update max_points based on duration (1 point per minute)."""
+        total_hours = self.duration_days * 24 + self.duration_hours
+        self.max_points = max(60, total_hours * 60)  # 1 point per minute, minimum 1 hour
+
+    def get_duration_seconds(self) -> int:
+        """Get current duration in seconds."""
+        return (self.duration_days * 24 + self.duration_hours) * 3600
+
+    def set_duration(self, days: int = 0, hours: int = 24):
+        """
+        Set the data retention duration.
+
+        Args:
+            days: Number of days (0-100)
+            hours: Number of hours (0-23)
+        """
+        # Enforce limits
+        total_days = days + hours / 24
+        if total_days > self.MAX_DAYS:
+            days = self.MAX_DAYS
+            hours = 0
+        if total_days < 1/24:  # Minimum 1 hour
+            days = 0
+            hours = 1
+
+        self.duration_days = min(days, self.MAX_DAYS)
+        self.duration_hours = hours
+        self._update_max_points()
+
+        # Trim existing data to new duration
+        self._trim_old_data()
+        self._update_plot()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -125,9 +164,10 @@ class XRayPlotWidget(QWidget):
             ts = datetime.fromisoformat(timestamp.rstrip('Z'))
             ts_float = ts.timestamp()
 
-            # Reject data older than 7 days
+            # Reject data older than configured duration (max 100 days)
             now = datetime.utcnow().timestamp()
-            if ts_float < now - (7 * 24 * 3600):
+            max_age = min(self.get_duration_seconds(), self.MAX_DAYS * 24 * 3600)
+            if ts_float < now - max_age:
                 return  # Skip old data
         except (ValueError, AttributeError):
             return  # Skip invalid timestamps
@@ -136,13 +176,36 @@ class XRayPlotWidget(QWidget):
         self.flux_long.append(flux_long)
         self.flux_short.append(flux_short if flux_short else flux_long)
 
-        # Trim to max points
-        if len(self.times) > self.max_points:
-            self.times = self.times[-self.max_points:]
-            self.flux_long = self.flux_long[-self.max_points:]
-            self.flux_short = self.flux_short[-self.max_points:]
-
+        # Trim old data
+        self._trim_old_data()
         self._update_plot()
+
+    def _trim_old_data(self):
+        """Remove data older than configured duration."""
+        if not self.times:
+            return
+
+        now = datetime.utcnow().timestamp()
+        max_age = self.get_duration_seconds()
+        cutoff = now - max_age
+
+        # Find first index within range
+        first_valid = 0
+        for i, t in enumerate(self.times):
+            if t >= cutoff:
+                first_valid = i
+                break
+        else:
+            # All data is old
+            self.times.clear()
+            self.flux_long.clear()
+            self.flux_short.clear()
+            return
+
+        if first_valid > 0:
+            self.times = self.times[first_valid:]
+            self.flux_long = self.flux_long[first_valid:]
+            self.flux_short = self.flux_short[first_valid:]
 
     def _update_plot(self):
         """Update the plot with current data."""
@@ -226,9 +289,10 @@ class XRayPlotWidget(QWidget):
                     ts = datetime.fromisoformat(timestamp.rstrip('Z'))
                     ts_float = ts.timestamp()
 
-                    # Reject data older than 7 days
+                    # Reject data older than configured duration (max 100 days)
                     now = datetime.utcnow().timestamp()
-                    if ts_float < now - (7 * 24 * 3600):
+                    max_age = min(self.get_duration_seconds(), self.MAX_DAYS * 24 * 3600)
+                    if ts_float < now - max_age:
                         continue
                 except (ValueError, AttributeError):
                     continue
@@ -237,11 +301,8 @@ class XRayPlotWidget(QWidget):
                 self.flux_long.append(flux_long)
                 self.flux_short.append(flux_short)
 
-        # Trim to max points
-        if len(self.times) > self.max_points:
-            self.times = self.times[-self.max_points:]
-            self.flux_long = self.flux_long[-self.max_points:]
-            self.flux_short = self.flux_short[-self.max_points:]
+        # Trim old data
+        self._trim_old_data()
 
         # Single update after all data loaded
         self._update_plot()
