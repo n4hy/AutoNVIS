@@ -365,12 +365,18 @@ class SpaceWeatherMainWindow(QMainWindow):
             hours = 1
             self.hours_spinbox.setValue(1)
 
+        # Clear and reload data with new duration
+        self.xray_plot.clear()
         self.xray_plot.set_duration(days=days, hours=hours)
 
+        # Trigger data reload from client
+        if self.ws_client and self.ws_client.isRunning():
+            self.ws_client.reload()
+
         if days > 0:
-            self.statusBar().showMessage(f"Duration set to {days} days {hours} hours")
+            self.statusBar().showMessage(f"Duration set to {days} days {hours} hours - reloading data...")
         else:
-            self.statusBar().showMessage(f"Duration set to {hours} hours")
+            self.statusBar().showMessage(f"Duration set to {hours} hours - reloading data...")
 
     def _on_clear_data(self):
         """Clear all data from widgets."""

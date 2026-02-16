@@ -31,7 +31,8 @@ class DirectXRayWorker(QObject):
     xray_received = pyqtSignal(dict)
     xray_batch_received = pyqtSignal(dict)
 
-    LATEST_URL = "https://services.swpc.noaa.gov/json/goes/primary/xrays-1-day.json"
+    # Use 7-day endpoint for more historical data
+    LATEST_URL = "https://services.swpc.noaa.gov/json/goes/primary/xrays-7-day.json"
 
     def __init__(self, update_interval_ms: int = 60000):
         super().__init__()
@@ -60,6 +61,11 @@ class DirectXRayWorker(QObject):
         if self.timer:
             self.timer.stop()
         self.disconnected.emit()
+
+    def reload_data(self):
+        """Force reload of historical data."""
+        self.historical_loaded = False
+        self._fetch_data()
 
     def _classify_flare(self, flux: float) -> str:
         """Classify flare based on flux."""
@@ -140,11 +146,11 @@ class DirectXRayWorker(QObject):
             self.logger.error(f"Async fetch error: {e}")
 
     async def _load_historical(self, data: List[Dict]):
-        """Load historical data as batch."""
-        cutoff = datetime.utcnow() - timedelta(hours=24)
+        """Load historical data as batch (up to 7 days)."""
+        cutoff = datetime.utcnow() - timedelta(days=7)
         records = []
 
-        # Take every 5th record for efficiency
+        # Take every 5th record for efficiency (still ~2000 points for 7 days)
         for i, record in enumerate(data):
             if i % 5 != 0:
                 continue
@@ -226,3 +232,8 @@ class DirectXRayClient(QObject):
 
     def isRunning(self) -> bool:
         return self.thread is not None and self.thread.isRunning()
+
+    def reload(self):
+        """Force reload of historical data."""
+        if self.worker:
+            self.worker.reload_data()
