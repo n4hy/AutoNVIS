@@ -163,6 +163,14 @@ class SpaceWeatherMainWindow(QMainWindow):
         self.autoscale_action.triggered.connect(self._on_autoscale_toggle)
         toolbar.addAction(self.autoscale_action)
 
+        # Normalized view toggle
+        self.normalized_action = QAction("Normalized %", self)
+        self.normalized_action.setCheckable(True)
+        self.normalized_action.setChecked(False)
+        self.normalized_action.setToolTip("Show % deviation from mean - reveals small variations")
+        self.normalized_action.triggered.connect(self._on_normalized_toggle)
+        toolbar.addAction(self.normalized_action)
+
         toolbar.addSeparator()
 
         # Clear data action
@@ -295,6 +303,14 @@ class SpaceWeatherMainWindow(QMainWindow):
         self.xray_plot.set_autoscale(checked)
         mode = "enabled" if checked else "disabled (fixed 1e-9 to 1e-3)"
         self.statusBar().showMessage(f"Autoscale {mode}")
+
+    def _on_normalized_toggle(self, checked: bool):
+        """Handle normalized view toggle."""
+        self.xray_plot.set_normalized_view(checked)
+        if checked:
+            self.statusBar().showMessage("Normalized view: showing % deviation from mean")
+        else:
+            self.statusBar().showMessage("Absolute view: showing actual flux values")
 
     def _on_clear_data(self):
         """Clear all data from widgets."""

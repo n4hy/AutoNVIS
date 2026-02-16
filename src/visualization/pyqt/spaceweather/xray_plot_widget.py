@@ -36,6 +36,9 @@ class XRayPlotWidget(QWidget):
         # Autoscale mode
         self.autoscale_enabled = False
 
+        # Normalized view (shows % deviation from mean)
+        self.normalized_view = False
+
         self._setup_ui()
 
     def _setup_ui(self):
@@ -145,21 +148,50 @@ class XRayPlotWidget(QWidget):
         flux_long_arr = np.array(self.flux_long)
         flux_short_arr = np.array(self.flux_short)
 
-        # Filter out invalid values for long wavelength
+        # Filter out invalid values
         valid_long = flux_long_arr > 0
-        if np.any(valid_long):
-            self.flux_long_curve.setData(times_arr[valid_long], flux_long_arr[valid_long])
-
-        # Filter out invalid values for short wavelength
         valid_short = flux_short_arr > 0
-        if np.any(valid_short):
-            self.flux_short_curve.setData(times_arr[valid_short], flux_short_arr[valid_short])
 
-        # Update current value label with both values
-        if len(self.flux_long) > 0:
-            current_long = self.flux_long[-1]
-            current_short = self.flux_short[-1] if self.flux_short else current_long
-            self.current_label.setText(f"Long: {current_long:.2e}  Short: {current_short:.2e} W/m²")
+        if self.normalized_view:
+            # Normalized view: show % deviation from mean
+            if np.any(valid_long):
+                mean_long = np.mean(flux_long_arr[valid_long])
+                pct_long = ((flux_long_arr[valid_long] - mean_long) / mean_long) * 100
+                self.flux_long_curve.setData(times_arr[valid_long], pct_long)
+
+            if np.any(valid_short):
+                mean_short = np.mean(flux_short_arr[valid_short])
+                pct_short = ((flux_short_arr[valid_short] - mean_short) / mean_short) * 100
+                self.flux_short_curve.setData(times_arr[valid_short], pct_short)
+
+            # Update title for normalized mode
+            self.title_label.setText("GOES X-Ray Flux - NORMALIZED (% deviation from mean)")
+            self.plot_widget.setLabel('left', 'Deviation', units='%')
+            self.plot_widget.setLogMode(x=False, y=False)
+
+            # Calculate and show statistics
+            if np.any(valid_long):
+                std_pct = (np.std(flux_long_arr[valid_long]) / np.mean(flux_long_arr[valid_long])) * 100
+                min_pct = ((np.min(flux_long_arr[valid_long]) - mean_long) / mean_long) * 100
+                max_pct = ((np.max(flux_long_arr[valid_long]) - mean_long) / mean_long) * 100
+                self.current_label.setText(f"Variation: {min_pct:+.1f}% to {max_pct:+.1f}%  StdDev: {std_pct:.2f}%")
+        else:
+            # Normal log view
+            if np.any(valid_long):
+                self.flux_long_curve.setData(times_arr[valid_long], flux_long_arr[valid_long])
+
+            if np.any(valid_short):
+                self.flux_short_curve.setData(times_arr[valid_short], flux_short_arr[valid_short])
+
+            self.title_label.setText("GOES X-Ray Flux (0.1-0.8 nm)")
+            self.plot_widget.setLabel('left', 'Flux', units='W/m²')
+            self.plot_widget.setLogMode(x=False, y=True)
+
+            # Update current value label with both values
+            if len(self.flux_long) > 0:
+                current_long = self.flux_long[-1]
+                current_short = self.flux_short[-1] if self.flux_short else current_long
+                self.current_label.setText(f"Long: {current_long:.2e}  Short: {current_short:.2e} W/m²")
 
     @pyqtSlot(dict)
     def on_xray_update(self, data: dict):
@@ -233,3 +265,19 @@ class XRayPlotWidget(QWidget):
     def is_autoscale_enabled(self) -> bool:
         """Return current autoscale state."""
         return self.autoscale_enabled
+
+    def set_normalized_view(self, enabled: bool):
+        """
+        Enable or disable normalized view (% deviation from mean).
+
+        This makes small variations visible during quiet solar conditions.
+
+        Args:
+            enabled: True for normalized view, False for absolute flux
+        """
+        self.normalized_view = enabled
+        self._update_plot()
+
+    def is_normalized_view(self) -> bool:
+        """Return current normalized view state."""
+        return self.normalized_view
