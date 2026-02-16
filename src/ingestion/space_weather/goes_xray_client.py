@@ -216,6 +216,75 @@ class GOESXRayClient:
         except Exception as e:
             self.logger.error(f"Failed to publish to queue: {e}", exc_info=True)
 
+    async def fetch_historical(self, hours: int = 24):
+        """
+        Fetch historical GOES X-ray data to backfill graphs on startup.
+
+        Args:
+            hours: Number of hours of history to fetch (max 24 from 1-day endpoint)
+        """
+        # Use the 1-day endpoint for historical data
+        historical_url = "https://services.swpc.noaa.gov/json/goes/primary/xrays-1-day.json"
+
+        self.logger.info(f"Fetching {hours} hours of historical GOES X-ray data...")
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(historical_url, timeout=30) as response:
+                    if response.status != 200:
+                        self.logger.error(f"HTTP {response.status} fetching historical data")
+                        return
+
+                    data = await response.json()
+
+                    if not data:
+                        self.logger.warning("Empty historical data response")
+                        return
+
+                    # Filter to requested hours and downsample (every 5 minutes for efficiency)
+                    cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+                    historical_records = []
+
+                    for i, record in enumerate(data):
+                        # Only take every 5th record (5-minute intervals)
+                        if i % 5 != 0:
+                            continue
+
+                        try:
+                            timestamp = datetime.fromisoformat(record['time_tag'].rstrip('Z'))
+                            if timestamp >= cutoff_time:
+                                historical_records.append(record)
+                        except (ValueError, KeyError):
+                            continue
+
+                    self.logger.info(f"Publishing {len(historical_records)} historical X-ray records...")
+
+                    for record in historical_records:
+                        try:
+                            flux = float(record.get('flux', 0))
+                            flare_class = self.format_flare_class(flux)
+
+                            hist_data = {
+                                'timestamp': record.get('time_tag'),
+                                'flux_short': flux,
+                                'flux_long': flux,
+                                'flare_class': flare_class,
+                                'm1_or_higher': self.is_m1_or_higher(flux),
+                                'source': 'GOES-Historical'
+                            }
+
+                            self.publish_to_queue(hist_data)
+                            await asyncio.sleep(0.05)  # Small delay to avoid queue flooding
+
+                        except Exception as e:
+                            self.logger.debug(f"Skip historical record: {e}")
+                            continue
+
+                    self.logger.info("Historical X-ray backfill complete")
+
+        except Exception as e:
+            self.logger.error(f"Error fetching historical X-ray data: {e}", exc_info=True)
+
     async def run_monitoring_loop(self):
         """
         Continuous monitoring loop - fetches data at regular intervals
@@ -223,6 +292,9 @@ class GOESXRayClient:
         self.logger.info(
             f"Starting GOES X-ray monitoring (interval: {self.update_interval}s)"
         )
+
+        # Fetch historical data first
+        await self.fetch_historical(hours=24)
 
         while True:
             try:
