@@ -124,8 +124,13 @@ class XRayPlotWidget(QWidget):
         try:
             ts = datetime.fromisoformat(timestamp.rstrip('Z'))
             ts_float = ts.timestamp()
+
+            # Reject data older than 7 days
+            now = datetime.utcnow().timestamp()
+            if ts_float < now - (7 * 24 * 3600):
+                return  # Skip old data
         except (ValueError, AttributeError):
-            ts_float = datetime.utcnow().timestamp()
+            return  # Skip invalid timestamps
 
         self.times.append(ts_float)
         self.flux_long.append(flux_long)
@@ -220,6 +225,11 @@ class XRayPlotWidget(QWidget):
                 try:
                     ts = datetime.fromisoformat(timestamp.rstrip('Z'))
                     ts_float = ts.timestamp()
+
+                    # Reject data older than 7 days
+                    now = datetime.utcnow().timestamp()
+                    if ts_float < now - (7 * 24 * 3600):
+                        continue
                 except (ValueError, AttributeError):
                     continue
 
