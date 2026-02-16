@@ -11,6 +11,7 @@ cd "$SCRIPT_DIR"
 
 CONFIG="config/local.yml"
 VENV="venv/bin/activate"
+PORT=8081  # Use different port than TEC display (8080)
 
 # Colors for output
 RED='\033[0;31m'
@@ -32,10 +33,10 @@ else
     exit 1
 fi
 
-# Kill any existing processes on port 8080
-if lsof -ti:8080 > /dev/null 2>&1; then
-    echo -e "${YELLOW}[WARN]${NC} Port 8080 in use, killing existing process..."
-    lsof -ti:8080 | xargs -r kill -9
+# Kill any existing processes on our port (but not port 8080 used by TEC)
+if lsof -ti:$PORT > /dev/null 2>&1; then
+    echo -e "${YELLOW}[WARN]${NC} Port $PORT in use, killing existing process..."
+    lsof -ti:$PORT | xargs -r kill -9
     sleep 1
 fi
 
@@ -65,33 +66,40 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-# Start dashboard service (background)
-echo "Starting dashboard service..."
-python -m src.output.dashboard.main --config "$CONFIG" > /tmp/autonvis_spaceweather_dashboard.log 2>&1 &
+# Start dashboard service (background) on separate port
+echo "Starting dashboard service on port $PORT..."
+python -m src.output.dashboard.main --config "$CONFIG" --port $PORT > /tmp/autonvis_spaceweather_dashboard.log 2>&1 &
 DASHBOARD_PID=$!
 sleep 3
 
 if kill -0 $DASHBOARD_PID 2>/dev/null; then
-    echo -e "${GREEN}[OK]${NC} Dashboard running (PID $DASHBOARD_PID, port 8080)"
+    echo -e "${GREEN}[OK]${NC} Dashboard running (PID $DASHBOARD_PID, port $PORT)"
 else
     echo -e "${RED}[ERROR]${NC} Dashboard failed to start. Check /tmp/autonvis_spaceweather_dashboard.log"
     cat /tmp/autonvis_spaceweather_dashboard.log
     exit 1
 fi
 
-# Start ingestion service (background)
-echo "Starting ingestion service (with 24h historical X-ray backfill)..."
-python -m src.ingestion.main --config "$CONFIG" > /tmp/autonvis_spaceweather_ingestion.log 2>&1 &
-INGESTION_PID=$!
-sleep 3
-
-if kill -0 $INGESTION_PID 2>/dev/null; then
-    echo -e "${GREEN}[OK]${NC} Ingestion running (PID $INGESTION_PID)"
+# Check if ingestion is already running (shared with TEC display)
+EXISTING_INGESTION=$(pgrep -f "src.ingestion.main" || true)
+if [ -n "$EXISTING_INGESTION" ]; then
+    echo -e "${GREEN}[OK]${NC} Ingestion already running (PID $EXISTING_INGESTION) - sharing with TEC display"
+    INGESTION_PID=""
 else
-    echo -e "${RED}[ERROR]${NC} Ingestion failed to start. Check /tmp/autonvis_spaceweather_ingestion.log"
-    cat /tmp/autonvis_spaceweather_ingestion.log
-    kill $DASHBOARD_PID 2>/dev/null
-    exit 1
+    # Start ingestion service (background)
+    echo "Starting ingestion service (with 24h historical X-ray backfill)..."
+    python -m src.ingestion.main --config "$CONFIG" > /tmp/autonvis_spaceweather_ingestion.log 2>&1 &
+    INGESTION_PID=$!
+    sleep 3
+
+    if kill -0 $INGESTION_PID 2>/dev/null; then
+        echo -e "${GREEN}[OK]${NC} Ingestion running (PID $INGESTION_PID)"
+    else
+        echo -e "${RED}[ERROR]${NC} Ingestion failed to start. Check /tmp/autonvis_spaceweather_ingestion.log"
+        cat /tmp/autonvis_spaceweather_ingestion.log
+        kill $DASHBOARD_PID 2>/dev/null
+        exit 1
+    fi
 fi
 
 echo ""
@@ -115,7 +123,7 @@ echo "Press Ctrl+C to stop all services."
 echo ""
 
 # Start PyQt app (foreground - blocks until user closes window)
-python -m src.visualization.pyqt.spaceweather.main --ws-url ws://localhost:8080/ws
+python -m src.visualization.pyqt.spaceweather.main --ws-url ws://localhost:$PORT/ws
 
 # Cleanup when PyQt app closes
 cleanup
