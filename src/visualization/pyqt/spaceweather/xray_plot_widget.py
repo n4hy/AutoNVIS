@@ -261,6 +261,10 @@ class XRayPlotWidget(QWidget):
                 current_short = self.flux_short[-1] if self.flux_short else current_long
                 self.current_label.setText(f"Long: {current_long:.2e}  Short: {current_short:.2e} W/m²")
 
+        # Set X-axis range to fit data
+        if len(times_arr) > 0:
+            self.plot_widget.setXRange(times_arr[0], times_arr[-1], padding=0.02)
+
     @pyqtSlot(dict)
     def on_xray_update(self, data: dict):
         """Handle X-ray data update from WebSocket."""
