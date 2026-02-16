@@ -247,7 +247,7 @@ class TECMapWidget(QWidget):
         # Format: list of (lon, lat) coordinate pairs, None separates segments
         boundaries = self._get_world_boundaries()
 
-        pen = pg.mkPen('#ffffff', width=1, style=pg.QtCore.Qt.PenStyle.DashLine)
+        pen = pg.mkPen('#000000', width=1, style=pg.QtCore.Qt.PenStyle.DashLine)
 
         for segment in boundaries:
             if len(segment) > 1:
