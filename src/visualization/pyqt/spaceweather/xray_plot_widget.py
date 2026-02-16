@@ -18,6 +18,7 @@ class XRayPlotWidget(QWidget):
 
     Shows:
     - 24-hour X-ray flux history (logarithmic scale)
+    - Both short (0.05-0.4nm) and long (0.1-0.8nm) wavelength channels
     - Horizontal lines at A/B/C/M/X class boundaries
     - Current flux value highlighted
     """
@@ -27,9 +28,10 @@ class XRayPlotWidget(QWidget):
 
         self.max_points = 2000  # ~24 hours at 1-min intervals
 
-        # Data buffers
+        # Data buffers - both channels
         self.times = []
-        self.flux_values = []
+        self.flux_long = []   # 0.1-0.8nm (used for flare classification)
+        self.flux_short = []  # 0.05-0.4nm (higher energy)
 
         # Autoscale mode
         self.autoscale_enabled = False
@@ -70,11 +72,18 @@ class XRayPlotWidget(QWidget):
         # Add flare class threshold lines
         self._add_threshold_lines()
 
-        # Flux curve
-        self.flux_curve = self.plot_widget.plot(
+        # Flux curves - two channels
+        self.flux_long_curve = self.plot_widget.plot(
             pen=pg.mkPen('#00ff00', width=2),
-            name='X-ray Flux'
+            name='Long (0.1-0.8nm)'
         )
+        self.flux_short_curve = self.plot_widget.plot(
+            pen=pg.mkPen('#ff6600', width=2),
+            name='Short (0.05-0.4nm)'
+        )
+
+        # Add legend
+        self.plot_widget.addLegend(offset=(10, 10))
 
         layout.addWidget(self.plot_widget)
 
@@ -100,13 +109,14 @@ class XRayPlotWidget(QWidget):
             text.setPos(self.plot_widget.getViewBox().viewRange()[0][0], np.log10(flux))
             self.plot_widget.addItem(text)
 
-    def add_data_point(self, timestamp: str, flux: float):
+    def add_data_point(self, timestamp: str, flux_long: float, flux_short: float = None):
         """
         Add a new X-ray flux data point.
 
         Args:
             timestamp: ISO format timestamp
-            flux: X-ray flux in W/m²
+            flux_long: Long wavelength (0.1-0.8nm) flux in W/m²
+            flux_short: Short wavelength (0.05-0.4nm) flux in W/m² (optional)
         """
         try:
             ts = datetime.fromisoformat(timestamp.rstrip('Z'))
@@ -115,12 +125,14 @@ class XRayPlotWidget(QWidget):
             ts_float = datetime.utcnow().timestamp()
 
         self.times.append(ts_float)
-        self.flux_values.append(flux)
+        self.flux_long.append(flux_long)
+        self.flux_short.append(flux_short if flux_short else flux_long)
 
         # Trim to max points
         if len(self.times) > self.max_points:
             self.times = self.times[-self.max_points:]
-            self.flux_values = self.flux_values[-self.max_points:]
+            self.flux_long = self.flux_long[-self.max_points:]
+            self.flux_short = self.flux_short[-self.max_points:]
 
         self._update_plot()
 
@@ -130,28 +142,34 @@ class XRayPlotWidget(QWidget):
             return
 
         times_arr = np.array(self.times)
-        flux_arr = np.array(self.flux_values)
+        flux_long_arr = np.array(self.flux_long)
+        flux_short_arr = np.array(self.flux_short)
 
-        # Filter out invalid values
-        valid = flux_arr > 0
-        if not np.any(valid):
-            return
+        # Filter out invalid values for long wavelength
+        valid_long = flux_long_arr > 0
+        if np.any(valid_long):
+            self.flux_long_curve.setData(times_arr[valid_long], flux_long_arr[valid_long])
 
-        self.flux_curve.setData(times_arr[valid], flux_arr[valid])
+        # Filter out invalid values for short wavelength
+        valid_short = flux_short_arr > 0
+        if np.any(valid_short):
+            self.flux_short_curve.setData(times_arr[valid_short], flux_short_arr[valid_short])
 
-        # Update current value label
-        if len(self.flux_values) > 0:
-            current_flux = self.flux_values[-1]
-            self.current_label.setText(f"{current_flux:.2e} W/m²")
+        # Update current value label with both values
+        if len(self.flux_long) > 0:
+            current_long = self.flux_long[-1]
+            current_short = self.flux_short[-1] if self.flux_short else current_long
+            self.current_label.setText(f"Long: {current_long:.2e}  Short: {current_short:.2e} W/m²")
 
     @pyqtSlot(dict)
     def on_xray_update(self, data: dict):
         """Handle X-ray data update from WebSocket."""
         timestamp = data.get('timestamp')
-        flux = data.get('flux_long') or data.get('flux')
+        flux_long = data.get('flux_long') or data.get('flux')
+        flux_short = data.get('flux_short')
 
-        if timestamp and flux:
-            self.add_data_point(timestamp, flux)
+        if timestamp and flux_long:
+            self.add_data_point(timestamp, flux_long, flux_short)
 
     @pyqtSlot(dict)
     def on_xray_batch(self, data: dict):
@@ -163,9 +181,10 @@ class XRayPlotWidget(QWidget):
         # Process all records without updating plot each time
         for record in records:
             timestamp = record.get('timestamp')
-            flux = record.get('flux_long') or record.get('flux_short')
+            flux_long = record.get('flux_long') or record.get('flux_short')
+            flux_short = record.get('flux_short') or flux_long
 
-            if timestamp and flux:
+            if timestamp and flux_long:
                 try:
                     ts = datetime.fromisoformat(timestamp.rstrip('Z'))
                     ts_float = ts.timestamp()
@@ -173,12 +192,14 @@ class XRayPlotWidget(QWidget):
                     continue
 
                 self.times.append(ts_float)
-                self.flux_values.append(flux)
+                self.flux_long.append(flux_long)
+                self.flux_short.append(flux_short)
 
         # Trim to max points
         if len(self.times) > self.max_points:
             self.times = self.times[-self.max_points:]
-            self.flux_values = self.flux_values[-self.max_points:]
+            self.flux_long = self.flux_long[-self.max_points:]
+            self.flux_short = self.flux_short[-self.max_points:]
 
         # Single update after all data loaded
         self._update_plot()
@@ -186,8 +207,10 @@ class XRayPlotWidget(QWidget):
     def clear(self):
         """Clear all data."""
         self.times.clear()
-        self.flux_values.clear()
-        self.flux_curve.setData([], [])
+        self.flux_long.clear()
+        self.flux_short.clear()
+        self.flux_long_curve.setData([], [])
+        self.flux_short_curve.setData([], [])
         self.current_label.setText("--")
 
     def set_autoscale(self, enabled: bool):
