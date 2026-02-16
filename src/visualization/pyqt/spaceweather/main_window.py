@@ -155,6 +155,16 @@ class SpaceWeatherMainWindow(QMainWindow):
 
         toolbar.addSeparator()
 
+        # Autoscale toggle
+        self.autoscale_action = QAction("Autoscale Y", self)
+        self.autoscale_action.setCheckable(True)
+        self.autoscale_action.setChecked(False)
+        self.autoscale_action.setToolTip("Toggle Y-axis autoscaling (vs fixed 1e-9 to 1e-3 range)")
+        self.autoscale_action.triggered.connect(self._on_autoscale_toggle)
+        toolbar.addAction(self.autoscale_action)
+
+        toolbar.addSeparator()
+
         # Clear data action
         clear_action = QAction("Clear Data", self)
         clear_action.triggered.connect(self._on_clear_data)
@@ -279,6 +289,12 @@ class SpaceWeatherMainWindow(QMainWindow):
                 self.ws_client.start()
         else:
             self.ws_client.stop()
+
+    def _on_autoscale_toggle(self, checked: bool):
+        """Handle autoscale toggle."""
+        self.xray_plot.set_autoscale(checked)
+        mode = "enabled" if checked else "disabled (fixed 1e-9 to 1e-3)"
+        self.statusBar().showMessage(f"Autoscale {mode}")
 
     def _on_clear_data(self):
         """Clear all data from widgets."""

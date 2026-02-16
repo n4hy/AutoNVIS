@@ -31,6 +31,9 @@ class XRayPlotWidget(QWidget):
         self.times = []
         self.flux_values = []
 
+        # Autoscale mode
+        self.autoscale_enabled = False
+
         self._setup_ui()
 
     def _setup_ui(self):
@@ -186,3 +189,24 @@ class XRayPlotWidget(QWidget):
         self.flux_values.clear()
         self.flux_curve.setData([], [])
         self.current_label.setText("--")
+
+    def set_autoscale(self, enabled: bool):
+        """
+        Enable or disable Y-axis autoscaling.
+
+        Args:
+            enabled: True for autoscale, False for fixed range
+        """
+        self.autoscale_enabled = enabled
+
+        if enabled:
+            # Enable autoscaling
+            self.plot_widget.enableAutoRange(axis='y')
+        else:
+            # Fixed range for typical solar activity
+            self.plot_widget.disableAutoRange(axis='y')
+            self.plot_widget.setYRange(-9, -3)  # 1e-9 to 1e-3 W/m²
+
+    def is_autoscale_enabled(self) -> bool:
+        """Return current autoscale state."""
+        return self.autoscale_enabled
