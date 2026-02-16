@@ -506,26 +506,22 @@ Real-time desktop visualization of global ionospheric TEC (Total Electron Conten
 - **Ionosphere Profiles**: hmF2 (layer height) and NmF2 (peak density) trends
 - **Connection Status**: Real-time data feed status
 
-**Architecture**:
+**Architecture** (Simple Direct Fetch):
 ```
 NOAA SWPC GloTEC (Internet)
-        ↓ HTTP/JSON (every 10 min)
-Ingestion Service
-        ↓ RabbitMQ
-Dashboard Service (port 8080)
-        ↓ WebSocket
+        ↓ HTTP/JSON (every 60 sec)
 PyQt TEC Display (desktop window)
 ```
+No RabbitMQ. No dashboard servers. No WebSocket. Just data.
 
 **Quick Start**:
 ```bash
-# One-command launch (starts all services + GUI)
 ./run_AutoNVIS_tec_display.sh
 ```
 
 **Key Features**:
-- **Historical Backfill**: Fetches 6 hours of data on startup for immediate visualization
-- **Real-Time Updates**: Automatic 10-minute refresh from NOAA GloTEC
+- **Direct NOAA Fetch**: Fetches GloTEC data directly from NOAA (no middleware)
+- **Real-Time Updates**: Automatic 60-second refresh
 - **Layer Selection**: Switch between TEC, Anomaly, hmF2, NmF2 views
 - **Political Boundaries**: Toggle black dashed country borders for geographic reference
 - **Scale Modes**: Percentile (5th-95th), Auto, or Fixed color scaling
@@ -541,22 +537,22 @@ PyQt TEC Display (desktop window)
 - URL: `https://services.swpc.noaa.gov/products/glotec/`
 - Format: GeoJSON with TEC, anomaly, hmF2, NmF2 per grid point
 - Resolution: 5° longitude × 2.5° latitude global grid
-- Update cadence: 10 minutes
+- Update cadence: 10 minutes (NOAA), polled every 60 seconds
 
 **Components**:
-- `src/visualization/pyqt/main.py` - Application entry point
+- `src/visualization/pyqt/main_direct.py` - Application entry point (direct fetch)
 - `src/visualization/pyqt/main_window.py` - Main window layout
 - `src/visualization/pyqt/widgets/tec_map_widget.py` - Global TEC map
 - `src/visualization/pyqt/widgets/tec_timeseries_widget.py` - Time series plots
 - `src/visualization/pyqt/widgets/ionosphere_profile_widget.py` - hmF2/NmF2 profiles
-- `src/visualization/pyqt/data/websocket_client.py` - Dashboard WebSocket client
+- `src/visualization/pyqt/data/direct_glotec_client.py` - Direct NOAA GloTEC fetcher
 - `src/visualization/pyqt/data/data_manager.py` - Thread-safe data buffers
-- `src/ingestion/space_weather/glotec_client.py` - GloTEC data fetcher
 - `run_AutoNVIS_tec_display.sh` - One-command launcher script
 
 **Dependencies** (in requirements.txt):
 - PyQt6>=6.4.0
 - pyqtgraph>=0.13.0
+- aiohttp>=3.8.0
 
 **Status**: ✅ Complete and operational
 
@@ -574,30 +570,26 @@ Real-time desktop visualization of GOES X-ray solar flux for solar flare monitor
 - **Flare Class Thresholds**: Horizontal lines at B/C/M/X boundaries
 - **Connection Status**: Real-time data feed status
 
-**Architecture**:
+**Architecture** (Simple Direct Fetch):
 ```
 NOAA SWPC GOES X-Ray (Internet)
-        ↓ HTTP/JSON (every 1 min)
-Ingestion Service
-        ↓ RabbitMQ
-Dashboard Service (port 8081)
-        ↓ WebSocket
+        ↓ HTTP/JSON (every 60 sec)
 PyQt Space Weather Display (desktop window)
 ```
+No RabbitMQ. No dashboard servers. No WebSocket. Just data.
 
 **Quick Start**:
 ```bash
-# One-command launch (starts all services + GUI)
 ./run_AutoNVIS_spaceweather.sh
 ```
 
 **Key Features**:
-- **Historical Backfill**: Loads ~10 hours of X-ray data on startup via batch message
-- **Real-Time Updates**: Automatic 1-minute refresh from NOAA GOES
+- **Direct NOAA Fetch**: Fetches GOES X-ray data directly from NOAA (no middleware)
+- **Historical Backfill**: Loads 24 hours of X-ray data on startup
+- **Real-Time Updates**: Automatic 60-second refresh
 - **Dual-Channel Display**: Both short and long wavelength X-ray channels
 - **Autoscale Toggle**: Switch between fixed (1e-9 to 1e-3) and auto Y-axis
 - **Normalized View**: Show % deviation from mean to reveal small variations
-- **Batch Loading**: Historical data loads as single update (no flicker)
 - **Dark Theme**: Professional appearance matching TEC display
 
 **Flare Classes**:
@@ -610,28 +602,28 @@ PyQt Space Weather Display (desktop window)
 | X | > 1e-4 | Major |
 
 **Data Source**: NOAA SWPC GOES X-Ray
-- URL: `https://services.swpc.noaa.gov/json/goes/primary/xrays-7-day.json`
+- URL: `https://services.swpc.noaa.gov/json/goes/primary/xrays-1-day.json`
 - Format: JSON with timestamp, flux values, satellite ID
-- Update cadence: 1 minute
+- Update cadence: 1 minute (NOAA), polled every 60 seconds
 
 **Components**:
-- `src/visualization/pyqt/spaceweather/main.py` - Application entry point
+- `src/visualization/pyqt/spaceweather/main_direct.py` - Application entry point (direct fetch)
 - `src/visualization/pyqt/spaceweather/main_window.py` - Main window layout
 - `src/visualization/pyqt/spaceweather/flare_indicator_widget.py` - Flare class display
 - `src/visualization/pyqt/spaceweather/xray_plot_widget.py` - X-ray time series
-- `src/ingestion/space_weather/goes_xray_client.py` - GOES X-ray fetcher
+- `src/visualization/pyqt/spaceweather/direct_xray_client.py` - Direct NOAA X-ray fetcher
 - `run_AutoNVIS_spaceweather.sh` - One-command launcher script
 
 **Running Both Displays**:
-Both TEC and Space Weather displays can run simultaneously using separate ports:
+Both TEC and Space Weather displays can run simultaneously:
 ```bash
-# Terminal 1: TEC Display (port 8080)
+# Terminal 1: TEC Display
 ./run_AutoNVIS_tec_display.sh
 
-# Terminal 2: Space Weather Display (port 8081)
+# Terminal 2: Space Weather Display
 ./run_AutoNVIS_spaceweather.sh
 ```
-The launcher scripts detect shared ingestion services and avoid conflicts.
+No port conflicts - each fetches directly from NOAA.
 
 **Status**: ✅ Complete and operational
 
