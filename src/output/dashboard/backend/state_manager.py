@@ -75,13 +75,20 @@ class DashboardState:
         self.filter_metrics: Dict[str, Any] = {}
         self.alert_history: Deque[Dict[str, Any]] = deque(maxlen=1000)
 
+        # --- GloTEC Data ---
+        self.glotec_lock = threading.Lock()
+        self.latest_glotec_map: Optional[Dict[str, Any]] = None
+        self.latest_glotec_time: Optional[datetime] = None
+        self.glotec_history: Deque[Dict[str, Any]] = deque(maxlen=144)  # 24h @ 10min intervals
+
         # Statistics
         self.stats = {
             'grids_received': 0,
             'propagation_updates': 0,
             'spaceweather_updates': 0,
             'observations_received': 0,
-            'alerts_generated': 0
+            'alerts_generated': 0,
+            'glotec_maps_received': 0
         }
 
     # --- Grid Data Methods ---
@@ -298,6 +305,145 @@ class DashboardState:
         """Get observation counts."""
         with self.observation_lock:
             return self.observation_counts.copy()
+
+    # --- GloTEC Data Methods ---
+
+    def update_glotec_map(self, map_data: Dict[str, Any]):
+        """
+        Update latest GloTEC map data.
+
+        Args:
+            map_data: GloTEC map dictionary with grid, statistics, metadata
+        """
+        with self.glotec_lock:
+            self.latest_glotec_map = map_data
+            self.latest_glotec_time = datetime.utcnow()
+
+            # Add to history (store statistics only, not full grid)
+            history_entry = {
+                'timestamp': map_data.get('timestamp', datetime.utcnow().isoformat()),
+                'statistics': map_data.get('statistics', {}),
+                'metadata': map_data.get('metadata', {})
+            }
+            self.glotec_history.append(history_entry)
+            self.stats['glotec_maps_received'] += 1
+
+    def get_latest_glotec(self, max_age_seconds: float = 1200.0) -> Optional[Dict[str, Any]]:
+        """
+        Get latest GloTEC map if fresh enough.
+
+        Args:
+            max_age_seconds: Maximum acceptable age in seconds
+
+        Returns:
+            GloTEC map dictionary or None
+        """
+        with self.glotec_lock:
+            if self.latest_glotec_map is None or self.latest_glotec_time is None:
+                return None
+
+            age = (datetime.utcnow() - self.latest_glotec_time).total_seconds()
+            if age > max_age_seconds:
+                return None
+
+            return self.latest_glotec_map
+
+    def get_glotec_statistics(self) -> Optional[Dict[str, Any]]:
+        """Get statistics from latest GloTEC map without copying large arrays."""
+        with self.glotec_lock:
+            if self.latest_glotec_map is None:
+                return None
+
+            return {
+                'timestamp': self.latest_glotec_map.get('timestamp'),
+                'statistics': self.latest_glotec_map.get('statistics', {}),
+                'metadata': self.latest_glotec_map.get('metadata', {}),
+                'age_seconds': (
+                    datetime.utcnow() - self.latest_glotec_time
+                ).total_seconds() if self.latest_glotec_time else None
+            }
+
+    def get_glotec_history(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """
+        Get GloTEC statistics history for specified time window.
+
+        Args:
+            hours: Number of hours to include
+
+        Returns:
+            List of GloTEC statistics entries
+        """
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+
+        with self.glotec_lock:
+            return [
+                entry for entry in self.glotec_history
+                if datetime.fromisoformat(entry['timestamp'].rstrip('Z')) > cutoff
+            ]
+
+    def get_glotec_point(self, lat: float, lon: float) -> Optional[Dict[str, float]]:
+        """
+        Get TEC value at a specific lat/lon from latest GloTEC map.
+
+        Uses nearest neighbor interpolation.
+
+        Args:
+            lat: Latitude in degrees
+            lon: Longitude in degrees
+
+        Returns:
+            Dictionary with tec, anomaly, hmF2, NmF2 at point, or None
+        """
+        with self.glotec_lock:
+            if self.latest_glotec_map is None:
+                return None
+
+            grid = self.latest_glotec_map.get('grid', {})
+            lat_grid = grid.get('lat', [])
+            lon_grid = grid.get('lon', [])
+            tec_grid = grid.get('tec', [])
+
+            if not lat_grid or not lon_grid or not tec_grid:
+                return None
+
+            # Find nearest indices
+            lat_idx = self._find_nearest_idx(lat_grid, lat)
+            lon_idx = self._find_nearest_idx(lon_grid, lon)
+
+            if lat_idx is None or lon_idx is None:
+                return None
+
+            try:
+                return {
+                    'lat': lat_grid[lat_idx],
+                    'lon': lon_grid[lon_idx],
+                    'tec': tec_grid[lat_idx][lon_idx] if isinstance(tec_grid[0], list) else tec_grid[lat_idx * len(lon_grid) + lon_idx],
+                    'anomaly': grid.get('anomaly', [[]])[lat_idx][lon_idx] if grid.get('anomaly') and isinstance(grid['anomaly'][0], list) else None,
+                    'hmF2': grid.get('hmF2', [[]])[lat_idx][lon_idx] if grid.get('hmF2') and isinstance(grid['hmF2'][0], list) else None,
+                    'NmF2': grid.get('NmF2', [[]])[lat_idx][lon_idx] if grid.get('NmF2') and isinstance(grid['NmF2'][0], list) else None,
+                    'timestamp': self.latest_glotec_map.get('timestamp')
+                }
+            except (IndexError, TypeError):
+                return None
+
+    def _find_nearest_idx(self, grid: List[float], value: float) -> Optional[int]:
+        """Find index of nearest value in sorted grid."""
+        if not grid:
+            return None
+
+        # Binary search for nearest
+        import bisect
+        idx = bisect.bisect_left(grid, value)
+
+        if idx == 0:
+            return 0
+        if idx == len(grid):
+            return len(grid) - 1
+
+        # Compare neighbors
+        if abs(grid[idx] - value) < abs(grid[idx - 1] - value):
+            return idx
+        return idx - 1
 
     # --- System Health Methods ---
 

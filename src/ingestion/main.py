@@ -6,6 +6,7 @@ monitoring of space weather, GNSS-TEC, and ionosonde data sources.
 """
 
 import asyncio
+import argparse
 import signal
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ from src.common.logging_config import setup_logging, ServiceLogger
 from src.common.message_queue import MessageQueueClient
 from src.ingestion.space_weather.goes_xray_client import GOESXRayClient
 from src.ingestion.space_weather.ace_solar_wind import ACESolarWindClient
+from src.ingestion.space_weather.glotec_client import GloTECClient
 from src.ingestion.gnss.gnss_tec_client import GNSSTECClient
 
 
@@ -25,9 +27,9 @@ class IngestionOrchestrator:
     Orchestrates all data ingestion services
     """
 
-    def __init__(self):
+    def __init__(self, config_path: str = None):
         """Initialize ingestion orchestrator"""
-        self.config = get_config()
+        self.config = get_config(config_path)
         self.logger = ServiceLogger("ingestion", "orchestrator")
 
         # Shared message queue client
@@ -36,6 +38,7 @@ class IngestionOrchestrator:
         # Client instances
         self.goes_client = None
         self.ace_client = None
+        self.glotec_client = None
         self.gnss_tec_client = None
 
         # Task handles
@@ -54,7 +57,8 @@ class IngestionOrchestrator:
                 host=self.config.services.rabbitmq_host,
                 port=self.config.services.rabbitmq_port,
                 username=self.config.services.rabbitmq_user,
-                password=self.config.services.rabbitmq_password
+                password=self.config.services.rabbitmq_password,
+                vhost=self.config.services.rabbitmq_vhost
             )
             self.logger.info("Message queue client initialized")
 
@@ -68,6 +72,7 @@ class IngestionOrchestrator:
         # Initialize clients
         self.goes_client = GOESXRayClient(mq_client=self.mq_client)
         self.ace_client = ACESolarWindClient(mq_client=self.mq_client)
+        self.glotec_client = GloTECClient(mq_client=self.mq_client)
         self.gnss_tec_client = GNSSTECClient(mq_client=self.mq_client)
 
         self.logger.info("All clients initialized")
@@ -91,6 +96,14 @@ class IngestionOrchestrator:
         )
         self.tasks.append(ace_task)
         self.logger.info("ACE solar wind monitoring started")
+
+        # Start GloTEC global TEC map monitoring
+        glotec_task = asyncio.create_task(
+            self.glotec_client.run_monitoring_loop(),
+            name="glotec"
+        )
+        self.tasks.append(glotec_task)
+        self.logger.info("GloTEC monitoring started")
 
         # Start GNSS-TEC monitoring
         gnss_tec_task = asyncio.create_task(
@@ -186,10 +199,18 @@ def handle_signal(orchestrator: IngestionOrchestrator):
 
 async def main():
     """Main entry point"""
+    # Parse arguments
+    parser = argparse.ArgumentParser(description='Auto-NVIS Data Ingestion Service')
+    parser.add_argument('--config', help='Path to configuration file')
+    parser.add_argument('--log-level', default='INFO',
+                       choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                       help='Logging level')
+    args = parser.parse_args()
+
     # Set up logging
     setup_logging(
         service_name="ingestion",
-        log_level="INFO",
+        log_level=args.log_level,
         json_format=True
     )
 
@@ -199,8 +220,11 @@ async def main():
     logger.info("Version 0.1.0")
     logger.info("=" * 60)
 
+    if args.config:
+        logger.info(f"Using config: {args.config}")
+
     # Create orchestrator
-    orchestrator = IngestionOrchestrator()
+    orchestrator = IngestionOrchestrator(config_path=args.config)
 
     # Set up signal handlers
     signal.signal(signal.SIGINT, handle_signal(orchestrator))

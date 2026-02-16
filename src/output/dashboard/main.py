@@ -22,6 +22,7 @@ from src.output.dashboard.backend.subscribers import (
     GridDataSubscriber,
     PropagationSubscriber,
     SpaceWeatherSubscriber,
+    GloTECSubscriber,
     ObservationSubscriber,
     SystemHealthSubscriber
 )
@@ -96,6 +97,16 @@ def main():
                 ws_manager.broadcast
             )
             logger.info("SpaceWeatherSubscriber created with WebSocket callback")
+            glotec_subscriber = GloTECSubscriber(
+                config.services.rabbitmq_host,
+                config.services.rabbitmq_port,
+                config.services.rabbitmq_user,
+                config.services.rabbitmq_password,
+                config.services.rabbitmq_vhost,
+                dashboard_state,
+                ws_manager.broadcast
+            )
+            logger.info("GloTECSubscriber created with WebSocket callback")
             observation_subscriber = ObservationSubscriber(
                 config.services.rabbitmq_host,
                 config.services.rabbitmq_port,
@@ -131,6 +142,7 @@ def main():
                 'grid': grid_subscriber,
                 'propagation': propagation_subscriber,
                 'spaceweather': spaceweather_subscriber,
+                'glotec': glotec_subscriber,
                 'observation': observation_subscriber,
                 'health': health_subscriber,
                 'state': dashboard_state,
@@ -142,6 +154,7 @@ def main():
             grid_subscriber.start()
             propagation_subscriber.start()
             spaceweather_subscriber.start()
+            glotec_subscriber.start()
             observation_subscriber.start()
             health_subscriber.start()
             logger.info("All subscribers started successfully")

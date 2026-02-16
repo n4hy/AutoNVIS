@@ -32,6 +32,11 @@ matplotlib>=3.7.0
 plotly>=5.14.0
 Pillow>=10.0.0
 
+# PyQt visualization
+PyQt6>=6.4.0
+pyqtgraph>=0.13.0
+pglive>=0.7.0
+
 # Scientific computing
 h5py>=3.8.0
 netCDF4>=1.6.0

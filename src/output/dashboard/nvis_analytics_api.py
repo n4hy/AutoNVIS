@@ -392,6 +392,7 @@ def create_app(
         from .backend.ionosphere_api import create_ionosphere_routes
         from .backend.propagation_api import create_propagation_routes
         from .backend.spaceweather_api import create_spaceweather_routes
+        from .backend.glotec_api import create_glotec_routes
         from .backend.control_api import create_control_routes
 
         dashboard_state = subscribers.get('state')
@@ -400,11 +401,13 @@ def create_app(
         ionosphere_router = create_ionosphere_routes(dashboard_state)
         propagation_router = create_propagation_routes(dashboard_state)
         spaceweather_router = create_spaceweather_routes(dashboard_state)
+        glotec_router = create_glotec_routes(dashboard_state)
         control_router = create_control_routes(dashboard_state, mq_client)
 
         app.include_router(ionosphere_router)
         app.include_router(propagation_router)
         app.include_router(spaceweather_router)
+        app.include_router(glotec_router)
         app.include_router(control_router)
 
         # Note: WebSocket broadcast callbacks are now set during subscriber construction
@@ -487,18 +490,33 @@ def create_app(
         """Get placement heatmap"""
         return await api_backend.get_placement_heatmap(resolution)
 
+    # Use the shared WebSocket manager if available, otherwise fall back to api_backend's
+    shared_ws_manager = subscribers.get('ws_manager') if subscribers else None
+    active_ws_manager = shared_ws_manager or api_backend.ws_manager
+    dashboard_state = subscribers.get('state') if subscribers else None
+
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
         """WebSocket for real-time updates"""
-        await api_backend.ws_manager.connect(websocket)
+        await active_ws_manager.connect(websocket)
         try:
+            # Send current GloTEC data immediately on connect
+            if dashboard_state:
+                glotec = dashboard_state.get_latest_glotec()
+                if glotec:
+                    await websocket.send_json({
+                        'type': 'glotec_update',
+                        'data': glotec
+                    })
+                    active_ws_manager.logger.info("Sent initial GloTEC data to new client")
+
             while True:
                 # Keep connection alive and receive messages
                 data = await websocket.receive_text()
                 # Echo back for now (could handle commands)
                 await websocket.send_text(f"Echo: {data}")
         except WebSocketDisconnect:
-            api_backend.ws_manager.disconnect(websocket)
+            active_ws_manager.disconnect(websocket)
 
     # Store reference to backend for external updates
     app.state.api_backend = api_backend

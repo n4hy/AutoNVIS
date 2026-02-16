@@ -90,6 +90,11 @@ class DataSourceConfig:
     giro_stations: list = field(default_factory=lambda: ["MHJ45", "AT138", "EA036"])
     giro_update_interval: int = 300  # seconds (5 minutes)
 
+    # GloTEC (NOAA SWPC Global TEC Maps)
+    glotec_index_url: str = "https://services.swpc.noaa.gov/products/glotec/geojson_2d_urt.json"
+    glotec_base_url: str = "https://services.swpc.noaa.gov"
+    glotec_update_interval: int = 600  # seconds (10 minutes, matches data cadence)
+
 
 @dataclass
 class ServiceConfig:

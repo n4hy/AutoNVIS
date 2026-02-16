@@ -232,6 +232,7 @@ class Topics:
 
     # Observation topics
     OBS_GNSS_TEC = "obs.gnss_tec"
+    OBS_GLOTEC_MAP = "obs.glotec_map"
     OBS_IONOSONDE = "obs.ionosonde"
     OBS_NVIS_SOUNDER = "obs.nvis_sounder"
     OBS_NVIS_QUALITY = "obs.nvis_quality"

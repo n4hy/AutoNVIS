@@ -508,6 +508,107 @@ class SpaceWeatherSubscriber:
             self.logger.error(f"Space weather subscriber error: {e}", exc_info=True)
 
 
+class GloTECSubscriber:
+    """Subscribes to GloTEC global TEC map topics."""
+
+    def __init__(
+        self,
+        rabbitmq_host: str,
+        rabbitmq_port: int,
+        rabbitmq_user: str,
+        rabbitmq_password: str,
+        rabbitmq_vhost: str,
+        state: DashboardState,
+        ws_broadcast_callback: Optional[Callable] = None
+    ):
+        self.rabbitmq_host = rabbitmq_host
+        self.rabbitmq_port = rabbitmq_port
+        self.rabbitmq_user = rabbitmq_user
+        self.rabbitmq_password = rabbitmq_password
+        self.rabbitmq_vhost = rabbitmq_vhost
+        self.mq_client = None
+        self.state = state
+        self.ws_broadcast = ws_broadcast_callback
+        self.logger = ServiceLogger("dashboard", "glotec_subscriber")
+        self.async_runner = AsyncTaskRunner()
+
+        self.subscriber_thread: Optional[threading.Thread] = None
+        self.running = False
+
+    def start(self):
+        """Start subscriber thread."""
+        if self.running:
+            return
+
+        self.running = True
+        self.subscriber_thread = threading.Thread(
+            target=self._consume_thread,
+            daemon=True,
+            name="GloTECSubscriber"
+        )
+        self.subscriber_thread.start()
+        self.logger.info("GloTEC subscriber started")
+
+    def stop(self):
+        """Stop subscriber thread."""
+        if not self.running:
+            return
+
+        self.running = False
+        if self.subscriber_thread:
+            self.subscriber_thread.join(timeout=5)
+
+        self.logger.info("GloTEC subscriber stopped")
+
+    def _on_glotec_map(self, message: Message):
+        """Handle GloTEC map message."""
+        try:
+            data = message.data
+            self.state.update_glotec_map(data)
+
+            # Broadcast full grid data to WebSocket clients for visualization
+            if self.ws_broadcast:
+                stats = data.get('statistics', {})
+                self.async_runner.submit(self.ws_broadcast({
+                    'type': 'glotec_update',
+                    'data': data  # Send full grid data for PyQt visualization
+                }))
+                self.logger.info(f"GloTEC broadcast to WebSocket: tec_mean={stats.get('tec_mean', 0):.1f}")
+
+            self.logger.info(
+                f"GloTEC map updated: {data.get('timestamp')}",
+                extra={'tec_mean': stats.get('tec_mean')}
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error processing GloTEC message: {e}", exc_info=True)
+
+    def _consume_thread(self):
+        """Background thread for consuming GloTEC messages."""
+        try:
+            # Create own connection
+            self.mq_client = MessageQueueClient(
+                host=self.rabbitmq_host,
+                port=self.rabbitmq_port,
+                username=self.rabbitmq_user,
+                password=self.rabbitmq_password,
+                vhost=self.rabbitmq_vhost
+            )
+            self.logger.info("GloTEC subscriber connected to RabbitMQ")
+
+            self.mq_client.subscribe(
+                topic_pattern=Topics.OBS_GLOTEC_MAP,
+                callback=self._on_glotec_map,
+                queue_name="dashboard_glotec"
+            )
+
+            self.logger.info(f"Subscribed to {Topics.OBS_GLOTEC_MAP}")
+            self.mq_client.start_consuming()
+
+        except Exception as e:
+            self.logger.error(f"GloTEC subscriber error: {e}", exc_info=True)
+
+
 class ObservationSubscriber:
     """Subscribes to observation topics (GNSS TEC, ionosonde, NVIS)."""
 

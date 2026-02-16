@@ -2,7 +2,7 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
-**Version:** 0.1.0 | **Status:** ✅ Production Ready (Filter Core) | **Last Updated:** February 14, 2026
+**Version:** 0.1.0 | **Status:** ✅ Production Ready (Filter Core + TEC Display) | **Last Updated:** February 16, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-73%25%20passing-yellow)]()
@@ -26,7 +26,9 @@
   - [Autonomous Supervisor Module](#2-autonomous-supervisor-module)
   - [PHaRLAP Propagation Engine](#3-pharlap-propagation-engine)
   - [GNSS-TEC Real-Time Ingestion](#4-gnss-tec-real-time-ingestion)
-  - [Python-C++ Integration Layer](#5-python-c-integration-layer)
+  - [Web Dashboard](#5-web-dashboard-real-time-monitoring)
+  - [PyQt TEC Display](#6-pyqt-tec-display-application)
+  - [Python-C++ Integration Layer](#7-python-c-integration-layer)
 - [Key Innovations](#key-innovations)
 - [Operational Capabilities](#operational-capabilities)
 - [Building and Testing](#building-and-testing)
@@ -490,7 +492,66 @@ Each subscriber creates its own RabbitMQ connection in its dedicated thread, ens
 
 **Status**: ✅ Complete and operational (see `src/output/dashboard/`)
 
-### 6. Python-C++ Integration Layer
+### 6. PyQt TEC Display Application
+
+Real-time desktop visualization of global ionospheric TEC (Total Electron Content) data using PyQt6 and pyqtgraph.
+
+**What It Shows**:
+- **Global TEC Map**: Color-coded world map showing electron density
+  - Red/yellow = high TEC = good HF propagation
+  - Blue/purple = low TEC = reduced HF propagation
+- **TEC Time Series**: 24-hour history of global mean TEC
+- **Ionosphere Profiles**: hmF2 (layer height) and NmF2 (peak density) trends
+- **Connection Status**: Real-time data feed status
+
+**Architecture**:
+```
+NOAA SWPC GloTEC (Internet)
+        ↓ HTTP/JSON (every 10 min)
+Ingestion Service
+        ↓ RabbitMQ
+Dashboard Service (port 8080)
+        ↓ WebSocket
+PyQt TEC Display (desktop window)
+```
+
+**Quick Start**:
+```bash
+# One-command launch (starts all services + GUI)
+./run_AutoNVIS_tec_display.sh
+```
+
+**Key Features**:
+- **Historical Backfill**: Fetches 6 hours of data on startup for immediate visualization
+- **Real-Time Updates**: Automatic 10-minute refresh from NOAA GloTEC
+- **Layer Selection**: Switch between TEC, Anomaly, hmF2, NmF2 views
+- **Point Tracking**: Click map to track TEC at specific location
+- **Dark Theme**: Professional appearance for operational use
+
+**Data Source**: NOAA SWPC GloTEC
+- URL: `https://services.swpc.noaa.gov/products/glotec/`
+- Format: GeoJSON with TEC, anomaly, hmF2, NmF2 per grid point
+- Resolution: 5° longitude × 2.5° latitude global grid
+- Update cadence: 10 minutes
+
+**Components**:
+- `src/visualization/pyqt/main.py` - Application entry point
+- `src/visualization/pyqt/main_window.py` - Main window layout
+- `src/visualization/pyqt/widgets/tec_map_widget.py` - Global TEC map
+- `src/visualization/pyqt/widgets/tec_timeseries_widget.py` - Time series plots
+- `src/visualization/pyqt/widgets/ionosphere_profile_widget.py` - hmF2/NmF2 profiles
+- `src/visualization/pyqt/data/websocket_client.py` - Dashboard WebSocket client
+- `src/visualization/pyqt/data/data_manager.py` - Thread-safe data buffers
+- `src/ingestion/space_weather/glotec_client.py` - GloTEC data fetcher
+- `run_AutoNVIS_tec_display.sh` - One-command launcher script
+
+**Dependencies** (in requirements.txt):
+- PyQt6>=6.4.0
+- pyqtgraph>=0.13.0
+
+**Status**: ✅ Complete and operational
+
+### 7. Python-C++ Integration Layer
 
 Seamless bridge between Python supervisor control and C++ numerical core using pybind11:
 
@@ -1289,21 +1350,30 @@ stats = gnss_client.statistics
    - Thread-safe message queue integration
    - Outcome: Production-ready dashboard with robust RabbitMQ infrastructure
 
+11. **Phase 11: PyQt TEC Display Application** (Complete - Feb 16, 2026)
+   - Real-time global TEC visualization with pyqtgraph
+   - GloTEC data ingestion from NOAA SWPC (10-minute updates)
+   - Historical backfill (6 hours on startup)
+   - Time series and ionosphere profile displays
+   - WebSocket integration with dashboard service
+   - One-command launcher script
+   - Outcome: Production-ready desktop TEC visualization
+
 **In Progress** 🔄:
 
-11. **Phase 11: Test Failure Resolution** (In Progress)
+12. **Phase 12: Test Failure Resolution** (In Progress)
     - Fix remaining 62 test failures
     - Resolve environmental issues (RabbitMQ connectivity)
     - Address API mismatches
     - Target: Q1 2026
 
-12. **Phase 12: Ionosonde Integration** (In Planning)
+13. **Phase 13: Ionosonde Integration** (In Planning)
    - GIRO DIDBase client
    - Auto-scaled parameter ingestion (foF2, hmF2, M3000F2)
    - Quality control and validation
    - Target: Q2 2026
 
-13. **Phase 13: Historical Validation** (In Planning)
+14. **Phase 14: Historical Validation** (In Planning)
     - 2024-2025 storm event replay
     - RMSE analysis vs ground truth
     - Parameter tuning (localization radius, inflation bounds)
@@ -1311,26 +1381,26 @@ stats = gnss_client.statistics
 
 **Future Phases** 📋:
 
-14. **Phase 14: Offline Smoother Implementation**
+15. **Phase 15: Offline Smoother Implementation**
     - RTS backward pass (square-root formulation)
     - State history persistence (HDF5)
     - Lag-3 fixed-lag smoother
     - Target: Q3 2026
 
-15. **Phase 15: PHaRLAP Integration**
+16. **Phase 16: PHaRLAP Integration**
     - MATLAB/Fortran wrapper
     - Grid conversion (Ne → refractive index)
     - Ray tracing automation
     - LUF/MUF product generation
     - Target: Q3 2026
 
-16. **Phase 16: Performance Optimization**
+17. **Phase 17: Performance Optimization**
     - GPU acceleration (CUDA/Eigen)
     - Parallel observation processing
     - Sparse matrix optimizations
     - Target: Q4 2026
 
-17. **Phase 17: Production Deployment**
+18. **Phase 18: Production Deployment**
     - Container orchestration (Kubernetes)
     - Monitoring and alerting (Prometheus/Grafana)
     - Automated backups and recovery
@@ -1359,6 +1429,7 @@ stats = gnss_client.statistics
 - ✅ **Feb 13, 2026**: GNSS-TEC ingestion operational
 - ✅ **Feb 14, 2026**: Comprehensive test suite complete (233 tests)
 - ✅ **Feb 14, 2026**: Dashboard & RabbitMQ vhost support complete
+- ✅ **Feb 16, 2026**: PyQt TEC Display application complete
 - 🔄 **Feb-Mar 2026**: Test failure resolution (ongoing)
 - 🔄 **Mar 2026**: Ionosonde integration (planned)
 - 🔄 **Apr 2026**: Historical validation (planned)
@@ -1720,7 +1791,7 @@ If you use Auto-NVIS in your research, please cite:
 - **Test Pass Rate**: 73% (171/233 tests)
 - **CPU Stress Tests**: 110s brutal system integration ✅
 - **Contributors**: [TBD]
-- **Last Updated**: February 14, 2026
+- **Last Updated**: February 16, 2026
 
 ---
 
@@ -1776,7 +1847,7 @@ This ensures the system can handle real-world solar storms and production worklo
 
 ---
 
-**Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion)
-**Last Updated**: February 14, 2026
+**Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC Display)
+**Last Updated**: February 16, 2026
 **Version**: 0.1.0
-**Next Milestone**: Test Failure Resolution + Ionosonde Integration (Phases 10-11)
+**Next Milestone**: Test Failure Resolution + Ionosonde Integration (Phases 11-12)
