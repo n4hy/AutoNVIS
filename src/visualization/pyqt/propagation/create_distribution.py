@@ -19,7 +19,7 @@ import zipfile
 from pathlib import Path
 from datetime import datetime
 
-VERSION = "1.1.0"
+VERSION = "2.0.0"
 DIST_NAME = f"hf-propagation-v{VERSION}"
 
 
@@ -45,10 +45,16 @@ def create_distribution():
     # Python package files
     package_files = [
         "__init__.py",
+        # Standard Four
         "data_client.py",
         "widgets.py",
         "main_window.py",
         "main_direct.py",
+        # Advanced (Beyond Standard Four)
+        "advanced_data_client.py",
+        "advanced_widgets.py",
+        "enhanced_main_window.py",
+        "enhanced_main.py",
     ]
 
     # Copy package files
@@ -76,7 +82,7 @@ def create_distribution():
             print(f"  ! Missing: {src_name}")
 
     # Copy shell scripts
-    for script in ["install.sh", "run.sh"]:
+    for script in ["install.sh", "run.sh", "run_enhanced.sh"]:
         src = script_dir / script
         if src.exists():
             dst = package_dir / script
