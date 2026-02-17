@@ -73,6 +73,8 @@ class XRayWidget(QWidget):
         super().__init__(parent)
         self.times: List[float] = []
         self.fluxes: List[float] = []
+        self.time_range_hours = 24
+        self.autoscale_enabled = False
         self._setup_ui()
 
     def _setup_ui(self):
@@ -125,8 +127,8 @@ class XRayWidget(QWidget):
             self.times.append(ts_float)
             self.fluxes.append(data['flux'])
 
-            # Trim to last 24 hours
-            cutoff = datetime.utcnow().timestamp() - 86400
+            # Trim to configured time range
+            cutoff = datetime.utcnow().timestamp() - (self.time_range_hours * 3600)
             while self.times and self.times[0] < cutoff:
                 self.times.pop(0)
                 self.fluxes.pop(0)
@@ -143,6 +145,35 @@ class XRayWidget(QWidget):
         except Exception:
             pass
 
+    def set_time_range(self, hours: int):
+        """Set the time range to display."""
+        self.time_range_hours = hours
+        # Trim existing data to new range
+        cutoff = datetime.utcnow().timestamp() - (hours * 3600)
+        while self.times and self.times[0] < cutoff:
+            self.times.pop(0)
+            self.fluxes.pop(0)
+        if self.times:
+            self.curve.setData(self.times, self.fluxes)
+            self.plot_widget.setXRange(self.times[0], self.times[-1], padding=0.02)
+
+    def set_autoscale(self, enabled: bool):
+        """Enable or disable Y-axis autoscaling."""
+        self.autoscale_enabled = enabled
+        if enabled:
+            self.plot_widget.enableAutoRange(axis='y')
+        else:
+            # Fixed range for X-ray flux (log scale)
+            self.plot_widget.setYRange(np.log10(1e-9), np.log10(1e-3), padding=0)
+
+    def clear_data(self):
+        """Clear all data."""
+        self.times.clear()
+        self.fluxes.clear()
+        self.curve.setData([], [])
+        self.scale_indicator.set_level(0)
+        self.class_label.setText("--")
+
 
 class KpWidget(QWidget):
     """Kp index display with G-scale indicator."""
@@ -157,6 +188,8 @@ class KpWidget(QWidget):
         super().__init__(parent)
         self.times: List[float] = []
         self.kp_values: List[float] = []
+        self.time_range_hours = 24
+        self.autoscale_enabled = False
         self._setup_ui()
 
     def _setup_ui(self):
@@ -211,8 +244,8 @@ class KpWidget(QWidget):
             self.times.append(ts_float)
             self.kp_values.append(kp)
 
-            # Trim to last 24 hours
-            cutoff = datetime.utcnow().timestamp() - 86400
+            # Trim to configured time range
+            cutoff = datetime.utcnow().timestamp() - (self.time_range_hours * 3600)
             while self.times and self.times[0] < cutoff:
                 self.times.pop(0)
                 self.kp_values.pop(0)
@@ -232,6 +265,33 @@ class KpWidget(QWidget):
         except Exception:
             pass
 
+    def set_time_range(self, hours: int):
+        """Set the time range to display."""
+        self.time_range_hours = hours
+        cutoff = datetime.utcnow().timestamp() - (hours * 3600)
+        while self.times and self.times[0] < cutoff:
+            self.times.pop(0)
+            self.kp_values.pop(0)
+        if self.times:
+            self.curve.setData(self.times, self.kp_values)
+            self.plot_widget.setXRange(self.times[0], self.times[-1], padding=0.02)
+
+    def set_autoscale(self, enabled: bool):
+        """Enable or disable Y-axis autoscaling."""
+        self.autoscale_enabled = enabled
+        if enabled:
+            self.plot_widget.enableAutoRange(axis='y')
+        else:
+            self.plot_widget.setYRange(0, 9, padding=0)
+
+    def clear_data(self):
+        """Clear all data."""
+        self.times.clear()
+        self.kp_values.clear()
+        self.curve.setData([], [])
+        self.scale_indicator.set_level(0)
+        self.kp_label.setText("Kp 0")
+
 
 class ProtonWidget(QWidget):
     """Proton flux display with S-scale indicator."""
@@ -240,6 +300,8 @@ class ProtonWidget(QWidget):
         super().__init__(parent)
         self.times: List[float] = []
         self.fluxes: List[float] = []
+        self.time_range_hours = 24
+        self.autoscale_enabled = False
         self._setup_ui()
 
     def _setup_ui(self):
@@ -295,8 +357,8 @@ class ProtonWidget(QWidget):
             self.times.append(ts_float)
             self.fluxes.append(flux)
 
-            # Trim to last 24 hours
-            cutoff = datetime.utcnow().timestamp() - 86400
+            # Trim to configured time range
+            cutoff = datetime.utcnow().timestamp() - (self.time_range_hours * 3600)
             while self.times and self.times[0] < cutoff:
                 self.times.pop(0)
                 self.fluxes.pop(0)
@@ -313,6 +375,34 @@ class ProtonWidget(QWidget):
         except Exception:
             pass
 
+    def set_time_range(self, hours: int):
+        """Set the time range to display."""
+        self.time_range_hours = hours
+        cutoff = datetime.utcnow().timestamp() - (hours * 3600)
+        while self.times and self.times[0] < cutoff:
+            self.times.pop(0)
+            self.fluxes.pop(0)
+        if self.times:
+            self.curve.setData(self.times, self.fluxes)
+            self.plot_widget.setXRange(self.times[0], self.times[-1], padding=0.02)
+
+    def set_autoscale(self, enabled: bool):
+        """Enable or disable Y-axis autoscaling."""
+        self.autoscale_enabled = enabled
+        if enabled:
+            self.plot_widget.enableAutoRange(axis='y')
+        else:
+            # Fixed range for proton flux (log scale)
+            self.plot_widget.setYRange(np.log10(0.01), np.log10(1e5), padding=0)
+
+    def clear_data(self):
+        """Clear all data."""
+        self.times.clear()
+        self.fluxes.clear()
+        self.curve.setData([], [])
+        self.scale_indicator.set_level(0)
+        self.flux_label.setText("--")
+
 
 class SolarWindWidget(QWidget):
     """Solar wind Bz display for storm precursor monitoring."""
@@ -321,6 +411,8 @@ class SolarWindWidget(QWidget):
         super().__init__(parent)
         self.times: List[float] = []
         self.bz_values: List[float] = []
+        self.time_range_hours = 24
+        self.autoscale_enabled = False
         self._setup_ui()
 
     def _setup_ui(self):
@@ -384,8 +476,8 @@ class SolarWindWidget(QWidget):
             self.times.append(ts_float)
             self.bz_values.append(bz)
 
-            # Trim to last 24 hours
-            cutoff = datetime.utcnow().timestamp() - 86400
+            # Trim to configured time range
+            cutoff = datetime.utcnow().timestamp() - (self.time_range_hours * 3600)
             while self.times and self.times[0] < cutoff:
                 self.times.pop(0)
                 self.bz_values.pop(0)
@@ -422,3 +514,31 @@ class SolarWindWidget(QWidget):
 
         except Exception:
             pass
+
+    def set_time_range(self, hours: int):
+        """Set the time range to display."""
+        self.time_range_hours = hours
+        cutoff = datetime.utcnow().timestamp() - (hours * 3600)
+        while self.times and self.times[0] < cutoff:
+            self.times.pop(0)
+            self.bz_values.pop(0)
+        if self.times:
+            self.curve.setData(self.times, self.bz_values)
+            self.plot_widget.setXRange(self.times[0], self.times[-1], padding=0.02)
+
+    def set_autoscale(self, enabled: bool):
+        """Enable or disable Y-axis autoscaling."""
+        self.autoscale_enabled = enabled
+        if enabled:
+            self.plot_widget.enableAutoRange(axis='y')
+        else:
+            # Fixed range for Bz (-30 to +30 nT)
+            self.plot_widget.setYRange(-30, 30, padding=0)
+
+    def clear_data(self):
+        """Clear all data."""
+        self.times.clear()
+        self.bz_values.clear()
+        self.curve.setData([], [])
+        self.status_label.setText("--")
+        self.bz_label.setText("Bz: -- nT")

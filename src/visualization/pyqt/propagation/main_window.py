@@ -10,7 +10,8 @@ Combines all four propagation indicators:
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QGridLayout, QVBoxLayout, QHBoxLayout,
-    QLabel, QFrame, QToolBar, QMessageBox
+    QLabel, QFrame, QToolBar, QMessageBox, QComboBox, QCheckBox,
+    QPushButton, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot
 from PyQt6.QtGui import QAction
@@ -237,7 +238,7 @@ class PropagationMainWindow(QMainWindow):
         return frame
 
     def _setup_toolbar(self):
-        """Create toolbar."""
+        """Create toolbar with controls."""
         toolbar = QToolBar("Main Toolbar")
         toolbar.setMovable(False)
         toolbar.setStyleSheet("""
@@ -257,8 +258,100 @@ class PropagationMainWindow(QMainWindow):
             QToolButton:hover {
                 background-color: #4d4d4d;
             }
+            QToolButton:checked {
+                background-color: #2a5a2a;
+                border-color: #4a8a4a;
+            }
+            QComboBox {
+                background-color: #3d3d3d;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 5px 10px;
+                color: #ddd;
+                min-width: 80px;
+            }
+            QComboBox:hover {
+                background-color: #4d4d4d;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #3d3d3d;
+                color: #ddd;
+                selection-background-color: #2a5a2a;
+            }
         """)
         self.addToolBar(toolbar)
+
+        # Refresh button
+        self.refresh_btn = QPushButton("Refresh Now")
+        self.refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2a6e2a;
+                border: 1px solid #4a8e4a;
+                border-radius: 4px;
+                padding: 5px 15px;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3a8e3a;
+            }
+            QPushButton:pressed {
+                background-color: #1a5e1a;
+            }
+        """)
+        self.refresh_btn.clicked.connect(self._on_refresh)
+        toolbar.addWidget(self.refresh_btn)
+
+        toolbar.addSeparator()
+
+        # Update interval
+        interval_label = QLabel("Update:")
+        interval_label.setStyleSheet("color: #ddd; padding: 0 5px;")
+        toolbar.addWidget(interval_label)
+
+        self.interval_combo = QComboBox()
+        self.interval_combo.addItems(["30 sec", "1 min", "2 min", "5 min"])
+        self.interval_combo.setCurrentIndex(1)  # Default 1 min
+        self.interval_combo.currentIndexChanged.connect(self._on_interval_changed)
+        toolbar.addWidget(self.interval_combo)
+
+        toolbar.addSeparator()
+
+        # Time range
+        range_label = QLabel("History:")
+        range_label.setStyleSheet("color: #ddd; padding: 0 5px;")
+        toolbar.addWidget(range_label)
+
+        self.range_combo = QComboBox()
+        self.range_combo.addItems(["1 hour", "6 hours", "12 hours", "24 hours"])
+        self.range_combo.setCurrentIndex(3)  # Default 24h
+        self.range_combo.currentIndexChanged.connect(self._on_range_changed)
+        toolbar.addWidget(self.range_combo)
+
+        toolbar.addSeparator()
+
+        # Autoscale toggle
+        self.autoscale_action = QAction("Autoscale Y", self)
+        self.autoscale_action.setCheckable(True)
+        self.autoscale_action.setChecked(False)
+        self.autoscale_action.setToolTip("Toggle Y-axis autoscaling")
+        self.autoscale_action.triggered.connect(self._on_autoscale_toggle)
+        toolbar.addAction(self.autoscale_action)
+
+        toolbar.addSeparator()
+
+        # Clear data
+        clear_action = QAction("Clear Data", self)
+        clear_action.triggered.connect(self._on_clear_data)
+        toolbar.addAction(clear_action)
+
+        # Spacer to push About to the right
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
 
         # About action
         about_action = QAction("About", self)
@@ -317,6 +410,62 @@ class PropagationMainWindow(QMainWindow):
     def _on_disconnected(self):
         self.statusBar().showMessage("Disconnected")
 
+    def _on_refresh(self):
+        """Handle manual refresh request."""
+        if self.data_client:
+            self.statusBar().showMessage("Refreshing data...")
+            # Trigger immediate fetch by restarting the client's timer
+            if hasattr(self.data_client, 'worker') and self.data_client.worker:
+                self.data_client.worker._fetch_data()
+            self.statusBar().showMessage("Connected | Data refreshed")
+
+    def _on_interval_changed(self, index: int):
+        """Handle update interval change."""
+        intervals = [30000, 60000, 120000, 300000]  # ms
+        interval_ms = intervals[index]
+
+        if self.data_client:
+            self.data_client.update_interval_ms = interval_ms
+            if hasattr(self.data_client, 'worker') and self.data_client.worker:
+                if self.data_client.worker.timer:
+                    self.data_client.worker.timer.setInterval(interval_ms)
+
+        interval_text = self.interval_combo.currentText()
+        self.statusBar().showMessage(f"Update interval set to {interval_text}")
+
+    def _on_range_changed(self, index: int):
+        """Handle time range change."""
+        ranges_hours = [1, 6, 12, 24]
+        hours = ranges_hours[index]
+
+        # Update all widgets with new time range
+        self.xray_widget.set_time_range(hours)
+        self.kp_widget.set_time_range(hours)
+        self.proton_widget.set_time_range(hours)
+        self.solarwind_widget.set_time_range(hours)
+
+        range_text = self.range_combo.currentText()
+        self.statusBar().showMessage(f"Time range set to {range_text}")
+
+    def _on_autoscale_toggle(self, checked: bool):
+        """Handle autoscale toggle."""
+        self.xray_widget.set_autoscale(checked)
+        self.kp_widget.set_autoscale(checked)
+        self.proton_widget.set_autoscale(checked)
+        self.solarwind_widget.set_autoscale(checked)
+
+        mode = "enabled" if checked else "disabled"
+        self.statusBar().showMessage(f"Y-axis autoscale {mode}")
+
+    def _on_clear_data(self):
+        """Clear all data from widgets."""
+        self.xray_widget.clear_data()
+        self.kp_widget.clear_data()
+        self.proton_widget.clear_data()
+        self.solarwind_widget.clear_data()
+        self.summary.update_scales(r=0, g=0, s=0, bz=0)
+        self.statusBar().showMessage("Data cleared")
+
     def _show_about(self):
         """Show about dialog."""
         QMessageBox.about(
@@ -333,6 +482,11 @@ class PropagationMainWindow(QMainWindow):
             "  R (Radio Blackouts): Based on X-ray flux\n"
             "  G (Geomagnetic Storms): Based on Kp index\n"
             "  S (Solar Radiation): Based on proton flux\n\n"
+            "Controls:\n"
+            "  - Refresh Now: Force immediate data fetch\n"
+            "  - Update: Set polling interval (30s-5min)\n"
+            "  - History: Set time range to display\n"
+            "  - Autoscale Y: Toggle Y-axis auto-ranging\n\n"
             "Built with PyQt6 and pyqtgraph."
         )
 
