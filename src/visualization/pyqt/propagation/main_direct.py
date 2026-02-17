@@ -11,14 +11,11 @@ Displays all four propagation indicators:
 
 import sys
 import logging
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
 
 from PyQt6.QtWidgets import QApplication
 
-from src.visualization.pyqt.propagation.main_window import PropagationMainWindow
-from src.visualization.pyqt.propagation.data_client import PropagationDataClient
+from .main_window import PropagationMainWindow
+from .data_client import PropagationDataClient
 
 
 def main():
