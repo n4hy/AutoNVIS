@@ -5,11 +5,12 @@ Displays GOES X-ray flux with logarithmic scale and flare class thresholds.
 """
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
-from PyQt6.QtCore import pyqtSlot
+from PyQt6.QtCore import pyqtSlot, QTimer
 import pyqtgraph as pg
 import numpy as np
 from datetime import datetime
 from typing import Optional
+import logging
 
 
 class XRayPlotWidget(QWidget):
@@ -28,6 +29,8 @@ class XRayPlotWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
+        self.logger = logging.getLogger("xray_plot")
+
         # Duration settings (default 1 day)
         self.duration_days = 1
         self.duration_hours = 0
@@ -44,7 +47,19 @@ class XRayPlotWidget(QWidget):
         # Normalized view (shows % deviation from mean)
         self.normalized_view = False
 
+        # Deferred update timer for resize events
+        self._update_timer = QTimer(self)
+        self._update_timer.setSingleShot(True)
+        self._update_timer.timeout.connect(self._deferred_update)
+        self._pending_update = False
+
+        # Threshold text items for repositioning
+        self._threshold_texts = []
+
         self._setup_ui()
+
+        # Connect to view range changes for label repositioning
+        self.plot_widget.sigRangeChanged.connect(self._on_range_changed)
 
     def _update_max_points(self):
         """Update max_points based on duration (1 point per minute)."""
@@ -131,14 +146,16 @@ class XRayPlotWidget(QWidget):
 
     def _add_threshold_lines(self):
         """Add horizontal lines at flare class boundaries."""
-        thresholds = [
+        self.thresholds = [
             (1e-8, 'B', '#4444ff'),   # B class
             (1e-7, 'C', '#44ff44'),   # C class
             (1e-6, 'M', '#ffff44'),   # M class
             (1e-5, 'X', '#ff4444'),   # X class
         ]
 
-        for flux, label, color in thresholds:
+        self._threshold_texts = []
+
+        for flux, label, color in self.thresholds:
             line = pg.InfiniteLine(
                 pos=np.log10(flux),
                 angle=0,
@@ -146,10 +163,14 @@ class XRayPlotWidget(QWidget):
             )
             self.plot_widget.addItem(line)
 
-            # Add label
+            # Add label - position will be updated on range change
             text = pg.TextItem(label, color=color, anchor=(0, 0.5))
-            text.setPos(self.plot_widget.getViewBox().viewRange()[0][0], np.log10(flux))
+            text.setPos(0, np.log10(flux))  # Initial position, will be updated
             self.plot_widget.addItem(text)
+            self._threshold_texts.append((text, np.log10(flux)))
+
+        # Initial label positioning
+        QTimer.singleShot(100, self._update_threshold_labels)
 
     def add_data_point(self, timestamp: str, flux_long: float, flux_short: float = None):
         """
@@ -209,61 +230,70 @@ class XRayPlotWidget(QWidget):
 
     def _update_plot(self):
         """Update the plot with current data."""
-        if len(self.times) < 2:
-            return
+        try:
+            if len(self.times) < 2:
+                return
 
-        times_arr = np.array(self.times)
-        flux_long_arr = np.array(self.flux_long)
-        flux_short_arr = np.array(self.flux_short)
+            times_arr = np.array(self.times)
+            flux_long_arr = np.array(self.flux_long)
+            flux_short_arr = np.array(self.flux_short)
 
-        # Filter out invalid values
-        valid_long = flux_long_arr > 0
-        valid_short = flux_short_arr > 0
+            # Filter out invalid values
+            valid_long = flux_long_arr > 0
+            valid_short = flux_short_arr > 0
 
-        if self.normalized_view:
-            # Normalized view: show % deviation from mean
-            if np.any(valid_long):
-                mean_long = np.mean(flux_long_arr[valid_long])
-                pct_long = ((flux_long_arr[valid_long] - mean_long) / mean_long) * 100
-                self.flux_long_curve.setData(times_arr[valid_long], pct_long)
+            if self.normalized_view:
+                # Normalized view: show % deviation from mean
+                if np.any(valid_long):
+                    mean_long = np.mean(flux_long_arr[valid_long])
+                    if mean_long > 0:
+                        pct_long = ((flux_long_arr[valid_long] - mean_long) / mean_long) * 100
+                        self.flux_long_curve.setData(times_arr[valid_long], pct_long)
 
-            if np.any(valid_short):
-                mean_short = np.mean(flux_short_arr[valid_short])
-                pct_short = ((flux_short_arr[valid_short] - mean_short) / mean_short) * 100
-                self.flux_short_curve.setData(times_arr[valid_short], pct_short)
+                if np.any(valid_short):
+                    mean_short = np.mean(flux_short_arr[valid_short])
+                    if mean_short > 0:
+                        pct_short = ((flux_short_arr[valid_short] - mean_short) / mean_short) * 100
+                        self.flux_short_curve.setData(times_arr[valid_short], pct_short)
 
-            # Update title for normalized mode
-            self.title_label.setText("GOES X-Ray Flux - NORMALIZED (% deviation from mean)")
-            self.plot_widget.setLabel('left', 'Deviation', units='%')
-            self.plot_widget.setLogMode(x=False, y=False)
+                # Update title for normalized mode
+                self.title_label.setText("GOES X-Ray Flux - NORMALIZED (% deviation from mean)")
+                self.plot_widget.setLabel('left', 'Deviation', units='%')
+                self.plot_widget.setLogMode(x=False, y=False)
 
-            # Calculate and show statistics
-            if np.any(valid_long):
-                std_pct = (np.std(flux_long_arr[valid_long]) / np.mean(flux_long_arr[valid_long])) * 100
-                min_pct = ((np.min(flux_long_arr[valid_long]) - mean_long) / mean_long) * 100
-                max_pct = ((np.max(flux_long_arr[valid_long]) - mean_long) / mean_long) * 100
-                self.current_label.setText(f"Variation: {min_pct:+.1f}% to {max_pct:+.1f}%  StdDev: {std_pct:.2f}%")
-        else:
-            # Normal log view
-            if np.any(valid_long):
-                self.flux_long_curve.setData(times_arr[valid_long], flux_long_arr[valid_long])
+                # Calculate and show statistics
+                if np.any(valid_long) and mean_long > 0:
+                    std_pct = (np.std(flux_long_arr[valid_long]) / mean_long) * 100
+                    min_pct = ((np.min(flux_long_arr[valid_long]) - mean_long) / mean_long) * 100
+                    max_pct = ((np.max(flux_long_arr[valid_long]) - mean_long) / mean_long) * 100
+                    self.current_label.setText(f"Variation: {min_pct:+.1f}% to {max_pct:+.1f}%  StdDev: {std_pct:.2f}%")
+            else:
+                # Normal log view
+                if np.any(valid_long):
+                    self.flux_long_curve.setData(times_arr[valid_long], flux_long_arr[valid_long])
 
-            if np.any(valid_short):
-                self.flux_short_curve.setData(times_arr[valid_short], flux_short_arr[valid_short])
+                if np.any(valid_short):
+                    self.flux_short_curve.setData(times_arr[valid_short], flux_short_arr[valid_short])
 
-            self.title_label.setText("GOES X-Ray Flux (0.1-0.8 nm)")
-            self.plot_widget.setLabel('left', 'Flux', units='W/m²')
-            self.plot_widget.setLogMode(x=False, y=True)
+                self.title_label.setText("GOES X-Ray Flux (0.1-0.8 nm)")
+                self.plot_widget.setLabel('left', 'Flux', units='W/m²')
+                self.plot_widget.setLogMode(x=False, y=True)
 
-            # Update current value label with both values
-            if len(self.flux_long) > 0:
-                current_long = self.flux_long[-1]
-                current_short = self.flux_short[-1] if self.flux_short else current_long
-                self.current_label.setText(f"Long: {current_long:.2e}  Short: {current_short:.2e} W/m²")
+                # Update current value label with both values
+                if len(self.flux_long) > 0:
+                    current_long = self.flux_long[-1]
+                    current_short = self.flux_short[-1] if self.flux_short else current_long
+                    self.current_label.setText(f"Long: {current_long:.2e}  Short: {current_short:.2e} W/m²")
 
-        # Set X-axis range to fit data
-        if len(times_arr) > 0:
-            self.plot_widget.setXRange(times_arr[0], times_arr[-1], padding=0.02)
+            # Set X-axis range to fit data
+            if len(times_arr) > 0:
+                self.plot_widget.setXRange(times_arr[0], times_arr[-1], padding=0.02)
+
+            # Update threshold labels after range change
+            QTimer.singleShot(50, self._update_threshold_labels)
+
+        except Exception as e:
+            self.logger.error(f"Plot update error: {e}")
 
     @pyqtSlot(dict)
     def on_xray_update(self, data: dict):
@@ -356,3 +386,40 @@ class XRayPlotWidget(QWidget):
     def is_normalized_view(self) -> bool:
         """Return current normalized view state."""
         return self.normalized_view
+
+    def _on_range_changed(self):
+        """Handle view range changes - reposition threshold labels."""
+        # Use deferred update to avoid excessive updates during resize
+        if not self._update_timer.isActive():
+            self._update_timer.start(50)  # 50ms debounce
+
+    def _deferred_update(self):
+        """Deferred update after resize/range change."""
+        try:
+            self._update_threshold_labels()
+        except Exception as e:
+            self.logger.debug(f"Deferred update error: {e}")
+
+    def _update_threshold_labels(self):
+        """Update threshold label positions to stay at left edge of view."""
+        try:
+            if not self._threshold_texts:
+                return
+
+            view_range = self.plot_widget.getViewBox().viewRange()
+            if view_range is None:
+                return
+
+            x_min = view_range[0][0]
+
+            for text, y_pos in self._threshold_texts:
+                text.setPos(x_min, y_pos)
+        except Exception as e:
+            self.logger.debug(f"Label position update error: {e}")
+
+    def resizeEvent(self, event):
+        """Handle resize events with deferred updates."""
+        super().resizeEvent(event)
+        # Schedule deferred update
+        if not self._update_timer.isActive():
+            self._update_timer.start(100)

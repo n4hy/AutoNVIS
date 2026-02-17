@@ -63,6 +63,9 @@ class IonosphereProfileWidget(QWidget):
 
         self.hmf2_curve = self.hmf2_plot.plot(
             pen=pg.mkPen('g', width=2),
+            symbol='o',
+            symbolSize=6,
+            symbolBrush='g',
             name='hmF2'
         )
 
@@ -78,6 +81,9 @@ class IonosphereProfileWidget(QWidget):
 
         self.nmf2_curve = self.nmf2_plot.plot(
             pen=pg.mkPen('m', width=2),
+            symbol='o',
+            symbolSize=6,
+            symbolBrush='m',
             name='NmF2'
         )
 

@@ -29,32 +29,43 @@ def main():
     logger.info("Space Weather - Direct from NOAA")
     logger.info("=" * 60)
 
-    app = QApplication(sys.argv)
-    app.setApplicationName("Space Weather")
+    try:
+        app = QApplication(sys.argv)
+        app.setApplicationName("Space Weather")
 
-    window = SpaceWeatherMainWindow()
+        window = SpaceWeatherMainWindow()
 
-    # Use direct client - fetches from NOAA every 60 seconds
-    client = DirectXRayClient(update_interval_ms=60000)
+        # Use direct client - fetches from NOAA every 60 seconds
+        client = DirectXRayClient(update_interval_ms=60000)
 
-    # Connect signals
-    client.xray_received.connect(window._on_xray_update)
-    client.xray_batch_received.connect(window._on_xray_batch)
-    client.connected.connect(window._on_connected)
-    client.disconnected.connect(window._on_disconnected)
+        # Connect signals with error handling
+        client.xray_received.connect(window._on_xray_update)
+        client.xray_batch_received.connect(window._on_xray_batch)
+        client.connected.connect(window._on_connected)
+        client.disconnected.connect(window._on_disconnected)
 
-    # Store client reference for cleanup
-    window.ws_client = client
+        # Store client reference for cleanup
+        window.ws_client = client
 
-    client.start()
-    window.show()
+        client.start()
+        window.show()
 
-    logger.info("Application started - fetching from NOAA")
+        # Force initial paint after window is shown
+        app.processEvents()
 
-    exit_code = app.exec()
+        logger.info("Application started - fetching from NOAA")
 
-    if client.isRunning():
-        client.stop()
+        exit_code = app.exec()
+
+    except Exception as e:
+        logger.error(f"Application error: {e}")
+        exit_code = 1
+    finally:
+        try:
+            if client.isRunning():
+                client.stop()
+        except Exception:
+            pass
 
     sys.exit(exit_code)
 

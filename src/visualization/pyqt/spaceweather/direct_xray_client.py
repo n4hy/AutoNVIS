@@ -85,20 +85,28 @@ class DirectXRayWorker(QObject):
         return "A0.0"
 
     def _fetch_data(self):
-        """Fetch data."""
+        """Fetch data with robust error handling."""
         if not self.running:
             return
 
+        loop = None
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(self._async_fetch())
-            finally:
-                loop.close()
+            loop.run_until_complete(self._async_fetch())
+        except asyncio.TimeoutError:
+            self.logger.warning("Fetch timeout - will retry on next interval")
+        except aiohttp.ClientError as e:
+            self.logger.warning(f"Network error: {e}")
         except Exception as e:
             self.logger.error(f"Fetch error: {e}")
             self.error.emit(str(e))
+        finally:
+            if loop is not None:
+                try:
+                    loop.close()
+                except Exception:
+                    pass
 
     async def _async_fetch(self):
         """Async fetch from NOAA."""

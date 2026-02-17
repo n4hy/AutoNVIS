@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot
 from PyQt6.QtGui import QAction
 import pyqtgraph as pg
+import logging
 
 from .flare_indicator_widget import FlareIndicatorWidget
 from .xray_plot_widget import XRayPlotWidget
@@ -63,17 +64,24 @@ class SpaceWeatherMainWindow(QMainWindow):
         """Initialize main window."""
         super().__init__(parent)
 
+        self.logger = logging.getLogger("spaceweather")
+
         self.setWindowTitle("AutoNVIS Space Weather - GOES X-Ray Monitor")
         self.setMinimumSize(1000, 600)
 
-        # Initialize pyqtgraph
-        pg.setConfigOptions(antialias=True)
+        # Initialize pyqtgraph with robust settings
+        pg.setConfigOptions(antialias=True, useOpenGL=False)
 
         # Data manager
         self.data_manager = SpaceWeatherDataManager()
 
         # WebSocket client (set externally)
         self.ws_client = None
+
+        # Deferred resize handling
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.timeout.connect(self._handle_resize)
 
         # Create UI
         self._setup_ui()
@@ -405,8 +413,26 @@ class SpaceWeatherMainWindow(QMainWindow):
             "Built with PyQt6 and pyqtgraph."
         )
 
+    def resizeEvent(self, event):
+        """Handle window resize with deferred updates."""
+        super().resizeEvent(event)
+        # Debounce resize events
+        self._resize_timer.start(150)
+
+    def _handle_resize(self):
+        """Deferred resize handling."""
+        try:
+            # Force plot widget to update after resize settles
+            if hasattr(self, 'xray_plot') and self.xray_plot:
+                self.xray_plot.update()
+        except Exception as e:
+            self.logger.debug(f"Resize handling error: {e}")
+
     def closeEvent(self, event):
         """Handle window close."""
-        if self.ws_client and self.ws_client.isRunning():
-            self.ws_client.stop()
+        try:
+            if self.ws_client and self.ws_client.isRunning():
+                self.ws_client.stop()
+        except Exception as e:
+            self.logger.error(f"Error stopping client: {e}")
         event.accept()

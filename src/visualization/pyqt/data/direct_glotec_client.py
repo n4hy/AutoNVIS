@@ -41,6 +41,7 @@ class DirectGloTECWorker(QObject):
         self.running = False
         self.timer: Optional[QTimer] = None
         self.last_file_url: Optional[str] = None
+        self.historical_loaded = False
         self.logger = logging.getLogger("direct_glotec")
 
     def start_fetching(self):
@@ -100,6 +101,11 @@ class DirectGloTECWorker(QObject):
                 if not index:
                     return None
 
+                # First fetch: load historical data
+                if not self.historical_loaded:
+                    await self._load_historical(session, index)
+                    self.historical_loaded = True
+
                 # Get latest
                 latest = index[-1]
                 file_url = latest.get('url', '')
@@ -129,6 +135,37 @@ class DirectGloTECWorker(QObject):
         except Exception as e:
             self.logger.error(f"Async fetch error: {e}")
             return None
+
+    async def _load_historical(self, session: aiohttp.ClientSession, index: List[Dict]):
+        """Load historical GloTEC data from available index entries."""
+        # Take last 24 entries (each ~10 min apart = ~4 hours of history)
+        # Limit to avoid slow startup
+        historical_entries = index[-24:]
+        self.logger.info(f"Loading {len(historical_entries)} historical GloTEC records...")
+
+        for entry in historical_entries:
+            try:
+                file_url = entry.get('url', '')
+                time_tag = entry.get('time_tag', '')
+
+                if not file_url:
+                    continue
+
+                full_url = f"{self.BASE_URL}{file_url}"
+                async with session.get(full_url, timeout=30) as resp:
+                    if resp.status != 200:
+                        continue
+                    geojson = await resp.json()
+
+                result = self._parse_geojson(geojson, time_tag)
+                if result:
+                    self.glotec_received.emit(result)
+
+            except Exception as e:
+                self.logger.debug(f"Error loading historical entry: {e}")
+                continue
+
+        self.logger.info("Historical GloTEC data loaded")
 
     def _parse_geojson(self, geojson: Dict, time_tag: str) -> Optional[Dict[str, Any]]:
         """Parse GeoJSON to structured data."""

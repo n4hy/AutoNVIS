@@ -73,15 +73,21 @@ class TECTimeSeriesWidget(QWidget):
         # Enable auto-range on Y axis
         self.plot_widget.enableAutoRange(axis='y')
 
-        # Global mean line (yellow)
+        # Global mean line (yellow) with symbols for single-point visibility
         self.global_mean_curve = self.plot_widget.plot(
             pen=pg.mkPen('y', width=2),
+            symbol='o',
+            symbolSize=6,
+            symbolBrush='y',
             name='Global Mean'
         )
 
-        # Selected point line (cyan)
+        # Selected point line (cyan) with symbols
         self.point_curve = self.plot_widget.plot(
             pen=pg.mkPen('c', width=2),
+            symbol='o',
+            symbolSize=6,
+            symbolBrush='c',
             name='Selected Point'
         )
 
