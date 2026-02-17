@@ -19,7 +19,7 @@ import zipfile
 from pathlib import Path
 from datetime import datetime
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 DIST_NAME = f"hf-propagation-v{VERSION}"
 
 

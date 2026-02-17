@@ -10,7 +10,7 @@ weather parameters that affect HF radio propagation:
 4. Solar Wind Bz - Storm precursor indicator
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __author__ = "AutoNVIS Project"
 
 from .main_window import PropagationMainWindow

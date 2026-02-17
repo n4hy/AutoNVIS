@@ -3,8 +3,8 @@
 ## Quick Start (TL;DR)
 
 ```bash
-unzip hf-propagation-v1.0.0.zip
-cd hf-propagation-v1.0.0
+unzip hf-propagation-v1.1.0.zip
+cd hf-propagation-v1.1.0
 ./install.sh
 ./run.sh
 ```
@@ -80,8 +80,8 @@ python3 --version
 
 ```bash
 # 1. Extract the archive
-unzip hf-propagation-v1.0.0.zip
-cd hf-propagation-v1.0.0
+unzip hf-propagation-v1.1.0.zip
+cd hf-propagation-v1.1.0
 
 # 2. Run the installer
 ./install.sh
@@ -99,8 +99,8 @@ The installer will:
 
 ```bash
 # 1. Extract the archive
-unzip hf-propagation-v1.0.0.zip
-cd hf-propagation-v1.0.0
+unzip hf-propagation-v1.1.0.zip
+cd hf-propagation-v1.1.0
 
 # 2. Create virtual environment
 python3 -m venv venv
@@ -128,7 +128,7 @@ python -m propagation.main_direct
 pip3 install --user PyQt6 pyqtgraph aiohttp numpy
 
 # Run directly
-cd hf-propagation-v1.0.0
+cd hf-propagation-v1.1.0
 python3 -m propagation.main_direct
 ```
 
@@ -139,7 +139,7 @@ python3 -m propagation.main_direct
 ### Standard Launch
 
 ```bash
-cd hf-propagation-v1.0.0
+cd hf-propagation-v1.1.0
 ./run.sh
 ```
 
@@ -167,7 +167,7 @@ Create file `~/.local/share/applications/hf-propagation.desktop`:
 [Desktop Entry]
 Name=HF Propagation Conditions
 Comment=Real-time NOAA space weather monitoring for HF radio
-Exec=/home/YOURUSERNAME/hf-propagation-v1.0.0/run.sh
+Exec=/home/YOURUSERNAME/hf-propagation-v1.1.0/run.sh
 Icon=applications-science
 Terminal=false
 Type=Application
@@ -175,7 +175,7 @@ Categories=Science;HamRadio;
 Keywords=propagation;hf;radio;space;weather;noaa;
 ```
 
-**Note**: Replace `/home/YOURUSERNAME/hf-propagation-v1.0.0` with the actual path where you extracted the application.
+**Note**: Replace `/home/YOURUSERNAME/hf-propagation-v1.1.0` with the actual path where you extracted the application.
 
 Then update the desktop database:
 ```bash
@@ -266,7 +266,7 @@ sudo dnf install mesa-libGL mesa-dri-drivers
 
 ```bash
 # Simply delete the directory
-rm -rf hf-propagation-v1.0.0
+rm -rf hf-propagation-v1.1.0
 
 # Remove desktop shortcut (if created)
 rm ~/.local/share/applications/hf-propagation.desktop
@@ -302,6 +302,6 @@ export HTTPS_PROXY=http://proxy.example.com:8080
 
 ## Support
 
-- **Issues**: https://github.com/anthropics/claude-code/issues
 - **NOAA SWPC**: https://www.swpc.noaa.gov/
 - **Space Weather Scales**: https://www.swpc.noaa.gov/noaa-scales-explanation
+- **AutoNVIS Project**: Part of the AutoNVIS HF propagation research project

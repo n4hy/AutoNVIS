@@ -7,8 +7,10 @@ Real-time monitoring of the "Standard Four" NOAA space weather parameters that d
 - **Four-panel dashboard** displaying critical propagation indicators
 - **NOAA R/G/S scale mapping** with color-coded severity
 - **Real-time data** from GOES and DSCOVR satellites via NOAA SWPC
-- **24-hour plots** with automatic data trimming
+- **Configurable time range** (1, 6, 12, or 24 hours)
+- **Adjustable update interval** (30 sec to 5 min)
 - **Overall HF conditions summary** (GOOD/MODERATE/FAIR/POOR)
+- **Interactive toolbar controls** for customization
 - **Dark theme** optimized for radio shack environments
 - **Standalone application** - no server required
 
@@ -162,6 +164,43 @@ The top bar shows:
 
 ---
 
+## Toolbar Controls
+
+The application provides a full toolbar for customizing the display:
+
+### Refresh Now
+Force an immediate data fetch from NOAA servers. Useful when you want the latest data without waiting for the next automatic update.
+
+### Update Interval
+Control how frequently data is fetched from NOAA:
+
+| Setting | Use Case |
+|---------|----------|
+| 30 sec | Active monitoring during events |
+| 1 min | Normal operation (default) |
+| 2 min | Reduced bandwidth usage |
+| 5 min | Background monitoring |
+
+### History Range
+Select how much historical data to display:
+
+| Setting | Use Case |
+|---------|----------|
+| 1 hour | Focus on recent activity |
+| 6 hours | Short-term trends |
+| 12 hours | Half-day overview |
+| 24 hours | Full day context (default) |
+
+### Autoscale Y
+Toggle automatic Y-axis scaling:
+- **Off (default)**: Fixed ranges optimized for each parameter
+- **On**: Auto-scale to fit current data (useful for zooming into quiet periods)
+
+### Clear Data
+Reset all plots and start fresh. Useful after changing time ranges or troubleshooting.
+
+---
+
 ## Data Sources
 
 All data is fetched directly from NOAA Space Weather Prediction Center:
@@ -173,7 +212,7 @@ All data is fetched directly from NOAA Space Weather Prediction Center:
 | Proton Flux | `integral-protons-1-day.json` | 5 minutes |
 | Solar Wind | `mag-1-day.json` | 1 minute |
 
-**Note**: The application fetches data every 60 seconds. Historical data (24 hours) is loaded on startup.
+**Note**: The update interval is configurable (30 sec to 5 min, default 1 min). Historical data is loaded on startup based on the selected time range.
 
 ---
 
@@ -248,18 +287,22 @@ sudo dnf install libxcb libxkbcommon mesa-libGL
 ### Display Layout
 
 ```
-+----------------------------------------------------------+
-| HF CONDITIONS: [GOOD] | R0 G0 S0 | Last: 12:34:56 UTC    |
-+----------------------------------------------------------+
-| +------------------------+ +---------------------------+ |
-| |   X-Ray Flux (R)       | |   Kp Index (G)            | |
-| |   24h log plot         | |   24h linear plot         | |
-| +------------------------+ +---------------------------+ |
-| +------------------------+ +---------------------------+ |
-| |   Proton Flux (S)      | |   Solar Wind Bz           | |
-| |   24h log plot         | |   24h linear plot         | |
-| +------------------------+ +---------------------------+ |
-+----------------------------------------------------------+
++------------------------------------------------------------------+
+| [Refresh Now] | Update: [1 min] | History: [24h] | [Autoscale Y] |
++------------------------------------------------------------------+
+| HF CONDITIONS: [GOOD]  |  R0  G0  S0  | Last: 12:34:56 UTC       |
++------------------------------------------------------------------+
+| +----------------------------+ +-------------------------------+ |
+| |   X-Ray Flux (R)           | |   Kp Index (G)                | |
+| |   Log plot with M1/X1 lines| |   Linear 0-9 with G1/G3 lines | |
+| +----------------------------+ +-------------------------------+ |
+| +----------------------------+ +-------------------------------+ |
+| |   Proton Flux (S)          | |   Solar Wind Bz               | |
+| |   Log plot with S1 line    | |   Linear with -10nT line      | |
+| +----------------------------+ +-------------------------------+ |
++------------------------------------------------------------------+
+| Status: Connected | Receiving data...                            |
++------------------------------------------------------------------+
 ```
 
 ---
@@ -293,11 +336,18 @@ sudo dnf install libxcb libxkbcommon mesa-libGL
 
 ## Version History
 
+### 1.1.0 (2026-02-17)
+- Add toolbar controls (Refresh, Update Interval, History Range, Autoscale, Clear)
+- Configurable update interval (30 sec, 1 min, 2 min, 5 min)
+- Configurable time range (1, 6, 12, 24 hours)
+- Y-axis autoscale toggle for all plots
+- Improved run.sh for execution from any directory
+
 ### 1.0.0 (2026-02-17)
 - Initial release
 - Standard Four monitoring (X-ray, Kp, Proton, Solar Wind)
 - NOAA R/G/S scale mapping
-- 24-hour historical plots
+- Historical plots with automatic data trimming
 - Overall conditions summary
 
 ---
