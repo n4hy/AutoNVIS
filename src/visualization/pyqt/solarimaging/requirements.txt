@@ -1,0 +1,5 @@
+# Solar Imaging Display - Dependencies
+# Install with: pip install -r requirements.txt
+
+PyQt6>=6.4.0
+aiohttp>=3.8.0
