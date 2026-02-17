@@ -2,7 +2,7 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
-**Version:** 0.1.0 | **Status:** ✅ Production Ready (Filter Core + TEC & Space Weather Displays) | **Last Updated:** February 16, 2026
+**Version:** 0.1.0 | **Status:** ✅ Production Ready (Filter Core + TEC, Propagation & Ray Tracer Displays) | **Last Updated:** February 16, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-73%25%20passing-yellow)]()
@@ -28,8 +28,9 @@
   - [GNSS-TEC Real-Time Ingestion](#4-gnss-tec-real-time-ingestion)
   - [Web Dashboard](#5-web-dashboard-real-time-monitoring)
   - [PyQt TEC Display](#6-pyqt-tec-display-application)
-  - [PyQt Space Weather Display](#7-pyqt-space-weather-display-application)
-  - [Python-C++ Integration Layer](#8-python-c-integration-layer)
+  - [PyQt HF Propagation Display](#7-pyqt-hf-propagation-display-application)
+- [PyQt Ray Tracer Display](#8-pyqt-ray-tracer-display-application)
+  - [Python-C++ Integration Layer](#9-python-c-integration-layer)
 - [Key Innovations](#key-innovations)
 - [Operational Capabilities](#operational-capabilities)
 - [Building and Testing](#building-and-testing)
@@ -556,80 +557,143 @@ No RabbitMQ. No dashboard servers. No WebSocket. Just data.
 
 **Status**: ✅ Complete and operational
 
-### 7. PyQt Space Weather Display Application
+### 7. PyQt HF Propagation Display Application
 
-Real-time desktop visualization of GOES X-ray solar flux for solar flare monitoring using PyQt6 and pyqtgraph.
+Real-time desktop dashboard showing all four key HF propagation indicators using PyQt6 and pyqtgraph.
 
-**What It Shows**:
-- **Flare Indicator**: Large visual display of current solar flare class (A/B/C/M/X)
-  - Color-coded by intensity (green=quiet, red=major flare)
-  - QUIET/SHOCK mode indicator for HF operations
-- **X-Ray Time Series**: Configurable duration flux history (up to 7 days) with dual channels
-  - Long wavelength (0.1-0.8 nm): Primary flare classification
-  - Short wavelength (0.05-0.4 nm): Higher energy indicator
-- **Flare Class Thresholds**: Horizontal lines at B/C/M/X boundaries
-- **Connection Status**: Real-time data feed status
+**What It Shows** (2x2 Grid Layout):
+- **X-Ray Flux (R-Scale)**: Solar flare intensity → Radio blackout risk
+  - Real-time flux with M/X flare thresholds
+  - NOAA R0-R5 scale indicator
+  - Flare class display (A/B/C/M/X)
+- **Kp Index (G-Scale)**: Geomagnetic storm conditions
+  - 3-hour Kp index with storm thresholds
+  - NOAA G0-G5 scale indicator
+  - Color-coded by storm intensity
+- **Proton Flux (S-Scale)**: Solar radiation storm intensity
+  - ≥10 MeV proton flux
+  - NOAA S0-S5 scale indicator
+  - Polar cap absorption risk
+- **Solar Wind Bz**: Storm precursor monitoring
+  - Interplanetary magnetic field Bz component
+  - Southward (negative) = enhanced coupling
+  - Storm onset warning indicator
+
+**Summary Bar**:
+- Overall HF CONDITIONS: GOOD / MODERATE / FAIR / POOR
+- Combined R/G/S scale display
+- Last update timestamp
 
 **Architecture** (Simple Direct Fetch):
 ```
-NOAA SWPC GOES X-Ray (Internet)
+NOAA SWPC APIs (Internet)
         ↓ HTTP/JSON (every 60 sec)
-PyQt Space Weather Display (desktop window)
+PyQt HF Propagation Display (desktop window)
 ```
 No RabbitMQ. No dashboard servers. No WebSocket. Just data.
 
 **Quick Start**:
 ```bash
-./run_AutoNVIS_spaceweather.sh
+./run_AutoNVIS_propagation.sh
 ```
 
 **Key Features**:
-- **Direct NOAA Fetch**: Fetches GOES X-ray data directly from NOAA (no middleware)
-- **Historical Backfill**: Loads up to 7 days of X-ray data on startup
-- **Configurable Duration**: Set display duration from 1 hour to 7 days via toolbar controls
+- **Direct NOAA Fetch**: Fetches from 4 NOAA endpoints concurrently
+- **Historical Backfill**: Loads 24 hours of history on startup
+- **NOAA Scale Indicators**: Color-coded R/G/S scale badges
 - **Real-Time Updates**: Automatic 60-second refresh
-- **Dual-Channel Display**: Both short and long wavelength X-ray channels
-- **Autoscale Toggle**: Switch between fixed (1e-9 to 1e-3) and auto Y-axis
-- **Normalized View**: Show % deviation from mean to reveal small variations
-- **Dark Theme**: Professional appearance matching TEC display
+- **Dark Theme**: Professional appearance for operational use
 
-**Flare Classes**:
-| Class | Flux Range (W/m²) | Description |
-|-------|-------------------|-------------|
-| A | < 1e-7 | Very Quiet |
-| B | 1e-7 to 1e-6 | Quiet |
-| C | 1e-6 to 1e-5 | Minor |
-| M | 1e-5 to 1e-4 | Moderate (triggers SHOCK mode) |
-| X | > 1e-4 | Major |
-
-**Data Source**: NOAA SWPC GOES X-Ray
-- URL: `https://services.swpc.noaa.gov/json/goes/primary/xrays-7-day.json`
-- Format: JSON with timestamp, flux values, satellite ID
-- Data available: Up to 7 days of history
-- Update cadence: 1 minute (NOAA), polled every 60 seconds
+**Data Sources**:
+| Indicator | NOAA Endpoint | Update Rate |
+|-----------|---------------|-------------|
+| X-Ray Flux | xrays-7-day.json | 1 minute |
+| Kp Index | planetary_k_index_1m.json | 1 minute |
+| Proton Flux | integral-protons-1-day.json | 5 minutes |
+| Solar Wind | mag-1-day.json | 1 minute |
 
 **Components**:
-- `src/visualization/pyqt/spaceweather/main_direct.py` - Application entry point (direct fetch)
-- `src/visualization/pyqt/spaceweather/main_window.py` - Main window layout
-- `src/visualization/pyqt/spaceweather/flare_indicator_widget.py` - Flare class display
-- `src/visualization/pyqt/spaceweather/xray_plot_widget.py` - X-ray time series
-- `src/visualization/pyqt/spaceweather/direct_xray_client.py` - Direct NOAA X-ray fetcher
-- `run_AutoNVIS_spaceweather.sh` - One-command launcher script
+- `src/visualization/pyqt/propagation/main_direct.py` - Application entry point
+- `src/visualization/pyqt/propagation/main_window.py` - Main window with summary bar
+- `src/visualization/pyqt/propagation/widgets.py` - Individual indicator widgets
+- `src/visualization/pyqt/propagation/data_client.py` - Multi-source NOAA data fetcher
+- `run_AutoNVIS_propagation.sh` - One-command launcher script
 
-**Running Both Displays**:
-Both TEC and Space Weather displays can run simultaneously:
+**Status**: ✅ Complete and operational
+
+### 8. PyQt Ray Tracer Display Application
+
+Interactive ionospheric ray tracing visualization for NVIS propagation analysis using PyQt6 and pyqtgraph.
+
+**What It Shows**:
+- **Frequency Window**: LUF/MUF/FOT display with usable bandwidth
+  - Lowest Usable Frequency (absorption limit)
+  - Maximum Usable Frequency (reflection limit)
+  - Frequency of Optimum Traffic (85% of MUF)
+  - Blackout detection (LUF > MUF)
+- **Ray Path Cross-Section**: Altitude vs ground range visualization
+  - Color-coded by frequency (red=low, blue=high)
+  - Solid lines = reflected rays, dashed = escaped rays
+  - Ionospheric layer markers (D/E/F regions)
+- **NVIS Coverage Map**: Geographic coverage visualization
+  - Transmitter location marker
+  - Coverage circles showing signal reach
+  - Color-coded by signal quality (absorption)
+
+**Control Panel**:
+- Transmitter location (lat/lon)
+- Frequency range (min/max/step)
+- Ionosphere parameters (NmF2, hmF2)
+- "Calculate Coverage" button
+
+**Architecture**:
+```
+Chapman Layer Model (simulated) OR C++ Ray Tracer (if built)
+        ↓ Local computation
+PyQt Ray Tracer Display (desktop window)
+```
+
+**Quick Start**:
+```bash
+./run_AutoNVIS_raytracer.sh
+```
+
+**Key Features**:
+- **Simulated Mode**: Works out-of-box with Chapman layer ionosphere
+- **Real Ray Tracing**: Uses C++ engine if built (see below)
+- **Interactive Parameters**: Adjust TX location and ionosphere on-the-fly
+- **Auto-Scaling Plots**: Ray paths and coverage scale to fit data
+- **Dark Theme**: Professional appearance for operational use
+
+**Building C++ Ray Tracer** (Optional - for real ray tracing):
+```bash
+cd src/propagation
+cmake -B build && cmake --build build -j$(nproc)
+```
+
+**Components**:
+- `src/visualization/pyqt/raytracer/main_direct.py` - Application entry point
+- `src/visualization/pyqt/raytracer/main_window.py` - Main window layout
+- `src/visualization/pyqt/raytracer/widgets.py` - Frequency, ray path, coverage widgets
+- `run_AutoNVIS_raytracer.sh` - One-command launcher script
+
+**Running All Displays**:
+All three displays can run simultaneously:
 ```bash
 # Terminal 1: TEC Display
 ./run_AutoNVIS_tec_display.sh
 
-# Terminal 2: Space Weather Display
-./run_AutoNVIS_spaceweather.sh
+# Terminal 2: HF Propagation Display
+./run_AutoNVIS_propagation.sh
+
+# Terminal 3: Ray Tracer Display
+./run_AutoNVIS_raytracer.sh
 ```
-No port conflicts - each fetches directly from NOAA.
+No port conflicts - each operates independently.
 
 **Status**: ✅ Complete and operational
 
-### 8. Python-C++ Integration Layer
+### 9. Python-C++ Integration Layer
 
 Seamless bridge between Python supervisor control and C++ numerical core using pybind11:
 
@@ -1431,16 +1495,21 @@ stats = gnss_client.statistics
 11. **Phase 11: PyQt Visualization Applications** (Complete - Feb 16, 2026)
    - **TEC Display**: Real-time global TEC visualization with pyqtgraph
      - GloTEC data ingestion from NOAA SWPC (10-minute updates)
-     - Historical backfill (6 hours on startup)
+     - Historical backfill (24 records on startup)
      - Time series and ionosphere profile displays
      - Political boundaries toggle (black dashed country borders)
      - Adaptive color scale modes (Percentile/Auto/Fixed)
-   - **Space Weather Display**: Real-time GOES X-ray monitoring
-     - Dual-channel X-ray flux (short + long wavelength)
-     - Flare class indicator (A/B/C/M/X) with QUIET/SHOCK mode
-     - Autoscale toggle and normalized view (% deviation)
-     - Batch historical loading (no flicker during startup)
-   - Both displays can run simultaneously on separate ports (8080/8081)
+   - **HF Propagation Display**: Combined space weather dashboard
+     - X-ray flux (R-scale), Kp index (G-scale), Proton flux (S-scale), Solar Wind Bz
+     - NOAA scale indicators with color coding
+     - Overall HF conditions summary (GOOD/MODERATE/FAIR/POOR)
+     - Historical loading with 24-hour display
+   - **Ray Tracer Display**: NVIS propagation analysis
+     - LUF/MUF/FOT frequency window display
+     - Ray path cross-section visualization
+     - NVIS coverage map with circles
+     - Interactive ionosphere parameters
+   - All three displays run independently (no port conflicts)
    - Outcome: Production-ready desktop visualization suite
 
 **In Progress** 🔄:
@@ -1931,7 +2000,7 @@ This ensures the system can handle real-world solar storms and production worklo
 
 ---
 
-**Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC & Space Weather Displays)
+**Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC, Propagation & Ray Tracer Displays)
 **Last Updated**: February 16, 2026
 **Version**: 0.1.0
 **Next Milestone**: Test Failure Resolution + Ionosonde Integration (Phases 12-13)
