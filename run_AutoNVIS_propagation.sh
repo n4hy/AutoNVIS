@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# AutoNVIS Space Weather - Direct from NOAA
-# Simple. No RabbitMQ. No Dashboard. Just data.
+# AutoNVIS HF Propagation Conditions - Direct from NOAA
+# X-ray, Kp, Proton flux, and Solar Wind Bz in one view
 #
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,7 +12,7 @@ if [ -f "venv/bin/activate" ]; then
 fi
 
 echo "=============================================="
-echo "Space Weather - Direct from NOAA"
+echo "HF Propagation Conditions - Direct from NOAA"
 echo "=============================================="
 
-python -m src.visualization.pyqt.spaceweather.main_direct
+python -m src.visualization.pyqt.propagation.main_direct
