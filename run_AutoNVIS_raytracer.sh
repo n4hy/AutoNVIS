@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# AutoNVIS HF Ray Tracer - NVIS Propagation Analysis
-# LUF/MUF, Ray Paths, Coverage Maps
+# AutoNVIS HF Ray Tracer - Native 3D Magnetoionic Ray Tracing
+# Haselgrove equations, Appleton-Hartree, Chapman layers
 #
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,7 +12,8 @@ if [ -f "venv/bin/activate" ]; then
 fi
 
 echo "=============================================="
-echo "HF Ray Tracer - NVIS Propagation Analysis"
+echo "HF Ray Tracer - Native 3D Magnetoionic"
+echo "Haselgrove + Appleton-Hartree + Chapman Layers"
 echo "=============================================="
 
-python -m src.visualization.pyqt.raytracer.main_direct
+python src/raytracer/display.py

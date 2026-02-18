@@ -6,10 +6,13 @@ PyQt6 application for visualizing HF ray tracing through the ionosphere.
 Shows ray paths, electron density profiles, and NVIS optimization results.
 
 Usage:
+    python src/raytracer/display.py
+    # or
     python -m src.raytracer.display
 """
 
 import sys
+import os
 import numpy as np
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
@@ -24,8 +27,15 @@ from PyQt6.QtGui import QFont
 
 import pyqtgraph as pg
 
-from .electron_density import IonosphericModel, create_test_profile
-from .haselgrove import HaselgroveSolver, RayPath, RayMode, RayTermination
+# Handle both direct execution and module import
+if __name__ == "__main__":
+    # Add parent directory to path for direct execution
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from raytracer.electron_density import IonosphericModel, create_test_profile
+    from raytracer.haselgrove import HaselgroveSolver, RayPath, RayMode, RayTermination
+else:
+    from .electron_density import IonosphericModel, create_test_profile
+    from .haselgrove import HaselgroveSolver, RayPath, RayMode, RayTermination
 
 
 class RayTraceWorker(QThread):
