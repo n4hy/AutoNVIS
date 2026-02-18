@@ -105,7 +105,12 @@ class AdvancedDataWorker(QObject):
                 self._fetch_enlil(session),
                 self._fetch_propagated_wind(session),
             ]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Log any exceptions that were returned
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    task_names = ['F10.7', 'HPI', 'DRAP', 'Ionosonde', 'Enlil', 'PropWind']
+                    self.logger.warning(f"{task_names[i]} task exception: {result}")
 
     # =========================================================================
     # F10.7 Solar Flux - Critical for foF2/MUF baseline calculation
@@ -125,11 +130,21 @@ class AdvancedDataWorker(QObject):
             if not data:
                 return
 
-            # Get latest entry
-            latest = data[-1] if isinstance(data, list) else data
+            # Get latest entry (array is sorted newest-first)
+            latest = data[0] if isinstance(data, list) else data
 
             flux = float(latest.get('flux', 0))
-            mean_90 = float(latest.get('ninety_day_mean', flux))
+
+            # ninety_day_mean may be null in recent entries, find one with valid data
+            mean_90 = latest.get('ninety_day_mean')
+            if mean_90 is None and isinstance(data, list):
+                # Search recent entries for one with 90-day mean
+                for entry in data[:10]:
+                    if entry.get('ninety_day_mean') is not None:
+                        mean_90 = float(entry['ninety_day_mean'])
+                        break
+            if mean_90 is None:
+                mean_90 = flux  # Fallback to current flux
 
             result = {
                 'timestamp': latest.get('time_tag', ''),
@@ -139,10 +154,10 @@ class AdvancedDataWorker(QObject):
                 'muf_impact': self._classify_f107_impact(flux),
             }
             self.f107_received.emit(result)
-            self.logger.debug(f"F10.7: {flux:.1f} sfu (90d mean: {mean_90:.1f})")
+            self.logger.info(f"F10.7: {flux:.1f} sfu (90d mean: {mean_90:.1f})")
 
         except Exception as e:
-            self.logger.debug(f"F10.7 fetch error: {e}")
+            self.logger.warning(f"F10.7 fetch error: {e}")
 
     def _classify_f107_impact(self, flux: float) -> str:
         """Classify F10.7 impact on HF propagation."""
@@ -190,9 +205,11 @@ class AdvancedDataWorker(QObject):
             if len(parts) < 3:
                 return
 
-            # Parse: date time hpi_north hpi_south ...
+            # Parse: observation_time forecast_time hpi_north hpi_south
+            # Format: 2026-02-18_00:00    2026-02-18_00:46      15      14
             try:
-                timestamp = f"{parts[0]} {parts[1]}"
+                # Use observation time (first column), convert underscore to space
+                timestamp = parts[0].replace('_', ' ')  # "2026-02-18 00:00"
                 hpi_north = float(parts[2])
                 hpi_south = float(parts[3]) if len(parts) > 3 else 0
             except (ValueError, IndexError):
@@ -207,10 +224,10 @@ class AdvancedDataWorker(QObject):
                 'storm_level': self._hpi_storm_level(hpi_north),
             }
             self.hpi_received.emit(result)
-            self.logger.debug(f"HPI North: {hpi_north:.1f} GW")
+            self.logger.info(f"HPI North: {hpi_north:.1f} GW")
 
         except Exception as e:
-            self.logger.debug(f"HPI fetch error: {e}")
+            self.logger.warning(f"HPI fetch error: {e}")
 
     def _classify_hpi(self, hpi: float) -> str:
         """Classify aurora visibility from HPI."""
