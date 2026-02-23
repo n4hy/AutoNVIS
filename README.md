@@ -2,7 +2,7 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
-**Version:** 0.3.0 | **Status:** ✅ Production Ready (Filter Core + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing) | **Last Updated:** February 22, 2026
+**Version:** 0.3.1 | **Status:** ✅ Production Ready (Filter Core + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Live Dashboard) | **Last Updated:** February 23, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-73%25%20passing-yellow)]()
@@ -782,8 +782,11 @@ World-class IONORT-style ray tracing implementation based on the IONORT paper (R
 
 2. **Geographic3DWidget** (Figures 7, 8)
    - 3D Earth sphere with lat/lon grid
+   - Political boundaries (toggleable, 20x interpolated resolution)
+   - Depth-tested occlusion (boundaries hidden over horizon)
    - Ray paths as 3D colored lines
    - Tx/Rx markers with interactive rotation
+   - Live camera position display (Az/El/Distance)
    - Requires PyOpenGL
 
 3. **SyntheticIonogramWidget** (Figures 11-16)
@@ -792,7 +795,16 @@ World-class IONORT-style ray tracing implementation based on the IONORT paper (R
    - MUF/LUF vertical markers
    - Winner triplets table
 
-**Quick Start**:
+**Live Dashboard** (`scripts/ionort_simple.py`):
+```bash
+# Launch interactive IONORT dashboard
+python scripts/ionort_simple.py
+
+# Or with full controls
+python scripts/ionort_live_demo.py --tx 40.0,-105.0 --rx 35.0,-106.0 --freq 3,15
+```
+
+**Quick Start** (API):
 ```python
 from src.raytracer import (
     HaselgroveSolver, HomingAlgorithm,
@@ -815,7 +827,7 @@ print(f"MUF: {result.muf:.1f} MHz, Winners: {result.num_winners}")
 
 **Documentation**: See [IONORT.md](IONORT.md) for complete implementation details.
 
-**Status**: ✅ Complete with 51 unit tests
+**Status**: ✅ Complete with 51 unit tests, live dashboard operational
 
 ### 11. Python-C++ Integration Layer
 

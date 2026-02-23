@@ -453,8 +453,12 @@ class HomingAlgorithm:
             if winner is not None:
                 winners.append(winner)
 
-            if progress_callback and (i + 1) % 100 == 0:
+            if progress_callback and ((i + 1) % 10 == 0 or i + 1 == total):
                 progress_callback(i + 1, total)
+
+        # Final progress call
+        if progress_callback:
+            progress_callback(total, total)
 
         return winners
 
@@ -492,8 +496,12 @@ class HomingAlgorithm:
                 except Exception as e:
                     logger.warning(f"Ray trace failed: {e}")
 
-                if progress_callback and completed % 100 == 0:
+                if progress_callback and (completed % 10 == 0 or completed == total):
                     progress_callback(completed, total)
+
+        # Final progress call
+        if progress_callback:
+            progress_callback(total, total)
 
         return winners
 

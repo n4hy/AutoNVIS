@@ -527,6 +527,9 @@ Like IONORT Figures 7, 8 perspective.
 **Features**:
 - Earth sphere mesh (6371 km radius)
 - Lat/lon grid lines every 30°
+- **Political boundaries** (toggleable checkbox, 20x interpolated resolution)
+- **Depth occlusion** (boundaries hidden when over horizon)
+- **Live camera display** (Az/El/Distance in large 33px font)
 - Tx marker (red), Rx marker (green)
 - Ray paths as 3D lines colored by frequency
 - Interactive rotation/zoom
@@ -688,6 +691,31 @@ solver = HaselgroveSolver(ionosphere, integrator=custom_rk45)
 ---
 
 ## Examples
+
+### Live Dashboard
+
+The fastest way to use the IONORT features is the interactive dashboard:
+
+```bash
+# Simple dashboard (recommended for first use)
+python scripts/ionort_simple.py
+
+# Full-featured dashboard with command-line options
+python scripts/ionort_live_demo.py --tx 40.0,-105.0 --rx 35.0,-106.0 --freq 3,15
+
+# NVIS mode (short range, high elevation angles)
+python scripts/ionort_live_demo.py --nvis
+```
+
+**Dashboard Features**:
+- Configurable Tx/Rx positions
+- Adjustable frequency and elevation ranges
+- Ionosphere parameters (foF2, hmF2)
+- Integrator selection (RK4, ABM, RK45)
+- Progress bar during ray tracing
+- Three synchronized IONORT visualizations
+- Political boundaries on 3D globe (toggleable)
+- Live camera position display
 
 ### Example 1: Compare Integrator Efficiency
 

@@ -311,9 +311,11 @@ class Geographic3DWidget(QWidget):
 
     Features:
     - Earth sphere mesh with lat/lon grid
+    - Political boundaries (toggleable)
     - Ray paths as 3D lines colored by frequency
     - Tx marker (red star), Rx marker (green diamond)
     - Interactive rotation and zoom
+    - Camera position display
 
     Like IONORT Figures 7, 8 perspective.
 
@@ -324,13 +326,14 @@ class Geographic3DWidget(QWidget):
         super().__init__(parent)
         self.ray_items = []
         self.marker_items = []
+        self.boundary_items = []
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
 
-        # Header
+        # Header with title and controls
         header = QHBoxLayout()
         title = QLabel("3D Geographic View")
         title.setStyleSheet("font-weight: bold; font-size: 14px; color: #ffffff;")
@@ -349,19 +352,55 @@ class Geographic3DWidget(QWidget):
             fallback.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(fallback)
             self.gl_widget = None
+            self.boundaries_checkbox = None
+            self.camera_label = None
             return
 
-        # Create OpenGL widget
+        # Create OpenGL widget - full Earth view
         self.gl_widget = gl.GLViewWidget()
         self.gl_widget.setBackgroundColor('#1e1e1e')
-        self.gl_widget.setCameraPosition(distance=20000, elevation=30, azimuth=45)
-        layout.addWidget(self.gl_widget)
+        self.gl_widget.setCameraPosition(distance=25000, elevation=20, azimuth=-100)
+
+        # Make GL widget expand to fill available space
+        self.gl_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.gl_widget.setMinimumHeight(300)
+
+        layout.addWidget(self.gl_widget, stretch=1)  # stretch=1 to fill space
+
+        # Bottom controls row
+        controls = QHBoxLayout()
+
+        # Boundaries checkbox
+        from PyQt6.QtWidgets import QCheckBox
+        self.boundaries_checkbox = QCheckBox("Show Boundaries")
+        self.boundaries_checkbox.setStyleSheet("color: #ffffff;")
+        self.boundaries_checkbox.setChecked(True)
+        self.boundaries_checkbox.toggled.connect(self._toggle_boundaries)
+        controls.addWidget(self.boundaries_checkbox)
+
+        controls.addStretch()
+
+        # Camera position display (large font for readability)
+        self.camera_label = QLabel("Az: 0° El: 0° Dist: 0")
+        self.camera_label.setStyleSheet("color: #88ff88; font-family: monospace; font-size: 33px; font-weight: bold;")
+        controls.addWidget(self.camera_label)
+
+        layout.addLayout(controls)
 
         # Add Earth sphere
         self._add_earth()
 
         # Add lat/lon grid
         self._add_grid()
+
+        # Add political boundaries
+        self._add_boundaries()
+
+        # Timer to update camera position display
+        from PyQt6.QtCore import QTimer
+        self.camera_timer = QTimer()
+        self.camera_timer.timeout.connect(self._update_camera_display)
+        self.camera_timer.start(100)  # Update 10x per second
 
     def _add_earth(self):
         """Add Earth sphere mesh."""
@@ -413,7 +452,8 @@ class Geographic3DWidget(QWidget):
             faces=faces,
             faceColors=colors[faces[:, 0]],
             smooth=True,
-            drawEdges=False
+            drawEdges=False,
+            glOptions='opaque'  # Enable depth testing for proper occlusion
         )
         self.gl_widget.addItem(mesh)
         self.earth_mesh = mesh
@@ -454,6 +494,174 @@ class Geographic3DWidget(QWidget):
             pts = np.array(pts)
             line = gl.GLLinePlotItem(pos=pts, color=(0.5, 0.5, 0.5, 0.5), width=1)
             self.gl_widget.addItem(line)
+
+    def _add_boundaries(self):
+        """Add political boundaries (country outlines with interpolation)."""
+        if not self.gl_widget:
+            return
+
+        # Simplified country boundary data (key coastlines and borders)
+        # Format: list of (lat, lon) coordinate sequences
+        boundaries_data = self._get_boundary_data()
+
+        for coords in boundaries_data:
+            if len(coords) < 2:
+                continue
+
+            # Interpolate to 20x more points for smoother boundaries
+            coords_interp = self._interpolate_boundary(coords, factor=20)
+
+            pts = []
+            for lat, lon in coords_interp:
+                lat_r = np.radians(lat)
+                lon_r = np.radians(lon)
+                r = EARTH_RADIUS_KM + 8  # Slightly above surface
+                x = r * np.cos(lat_r) * np.cos(lon_r)
+                y = r * np.cos(lat_r) * np.sin(lon_r)
+                z = r * np.sin(lat_r)
+                pts.append([x, y, z])
+
+            pts = np.array(pts)
+            line = gl.GLLinePlotItem(pos=pts, color=(1.0, 1.0, 0.5, 0.9), width=1.5,
+                                      glOptions='opaque')  # opaque enables depth testing
+            self.gl_widget.addItem(line)
+            self.boundary_items.append(line)
+
+    def _interpolate_boundary(self, coords, factor=20):
+        """Interpolate boundary coordinates for smoother lines.
+
+        Uses spherical interpolation (great circle) between points.
+        """
+        if len(coords) < 2:
+            return coords
+
+        result = []
+        for i in range(len(coords) - 1):
+            lat1, lon1 = coords[i]
+            lat2, lon2 = coords[i + 1]
+
+            # Add interpolated points along great circle
+            for t in np.linspace(0, 1, factor, endpoint=False):
+                # Simple linear interpolation (good enough for small segments)
+                lat = lat1 + t * (lat2 - lat1)
+                lon = lon1 + t * (lon2 - lon1)
+
+                # Handle longitude wraparound
+                if abs(lon2 - lon1) > 180:
+                    if lon1 > lon2:
+                        lon = lon1 + t * (lon2 + 360 - lon1)
+                    else:
+                        lon = lon1 + t * (lon2 - 360 - lon1)
+                    if lon > 180:
+                        lon -= 360
+                    elif lon < -180:
+                        lon += 360
+
+                result.append((lat, lon))
+
+        # Add final point
+        result.append(coords[-1])
+        return result
+
+    def _get_boundary_data(self):
+        """Get simplified political boundary coordinates."""
+        # Simplified outlines of major landmasses and some borders
+        # This is a minimal set - can be expanded with full GeoJSON data
+        boundaries = []
+
+        # North America outline (simplified)
+        north_america = [
+            (49, -125), (48, -123), (49, -95), (49, -88), (45, -82), (42, -82),
+            (41, -81), (43, -79), (45, -75), (47, -70), (45, -67), (44, -66),
+            (41, -70), (40, -74), (38, -75), (35, -75), (30, -81), (25, -80),
+            (25, -82), (30, -88), (29, -95), (26, -97), (32, -117), (34, -120),
+            (38, -123), (42, -124), (46, -124), (49, -125),
+        ]
+        boundaries.append(north_america)
+
+        # US-Canada border (simplified)
+        us_canada = [(49, -125), (49, -95), (49, -88), (45, -82)]
+        boundaries.append(us_canada)
+
+        # US-Mexico border (simplified)
+        us_mexico = [(32, -117), (31, -111), (31, -106), (29, -103), (26, -97)]
+        boundaries.append(us_mexico)
+
+        # Europe outline (simplified)
+        europe = [
+            (36, -10), (37, -8), (40, -9), (43, -9), (43, -2), (46, 1), (48, -5),
+            (49, -1), (51, 1), (53, 5), (55, 8), (58, 10), (63, 10), (71, 25),
+            (70, 30), (60, 30), (55, 20), (54, 14), (50, 14), (47, 15), (45, 14),
+            (40, 18), (38, 15), (36, 14), (36, -10),
+        ]
+        boundaries.append(europe)
+
+        # South America outline (simplified)
+        south_america = [
+            (12, -72), (10, -75), (5, -77), (-5, -81), (-18, -70), (-23, -70),
+            (-33, -72), (-42, -73), (-55, -68), (-55, -65), (-52, -58),
+            (-35, -57), (-23, -43), (-5, -35), (0, -50), (5, -60), (10, -65),
+            (12, -72),
+        ]
+        boundaries.append(south_america)
+
+        # Africa outline (simplified)
+        africa = [
+            (37, -6), (35, -1), (37, 10), (32, 32), (22, 37), (12, 44),
+            (5, 40), (-12, 44), (-26, 33), (-35, 20), (-34, 18), (-30, 17),
+            (-22, 14), (-17, 12), (-5, 12), (5, 0), (5, -5), (15, -17),
+            (22, -17), (27, -13), (32, -10), (36, -5), (37, -6),
+        ]
+        boundaries.append(africa)
+
+        # Australia outline (simplified)
+        australia = [
+            (-20, 114), (-35, 117), (-35, 138), (-38, 145), (-28, 154),
+            (-20, 149), (-11, 142), (-12, 130), (-15, 129), (-20, 114),
+        ]
+        boundaries.append(australia)
+
+        # Asia outline (very simplified - just key coasts)
+        asia_east = [
+            (40, 130), (35, 135), (35, 140), (40, 140), (45, 142),
+            (50, 143), (55, 137), (60, 150), (65, 170),
+        ]
+        boundaries.append(asia_east)
+
+        asia_south = [
+            (8, 77), (15, 80), (22, 88), (22, 92), (10, 98), (1, 104),
+            (-8, 115), (-8, 140), (0, 130), (5, 120), (15, 108), (20, 110),
+            (25, 120), (30, 122), (40, 120), (40, 130),
+        ]
+        boundaries.append(asia_south)
+
+        return boundaries
+
+    def _toggle_boundaries(self, checked: bool):
+        """Show or hide political boundaries."""
+        if not self.gl_widget:
+            return
+
+        for item in self.boundary_items:
+            item.setVisible(checked)
+
+    def _update_camera_display(self):
+        """Update camera position display."""
+        if not self.gl_widget or not hasattr(self, 'camera_label') or self.camera_label is None:
+            return
+
+        try:
+            # Get camera parameters
+            params = self.gl_widget.cameraParams()
+            azimuth = params.get('azimuth', 0)
+            elevation = params.get('elevation', 0)
+            distance = params.get('distance', 0)
+
+            self.camera_label.setText(
+                f"Az: {azimuth:6.1f}°  El: {elevation:5.1f}°  Dist: {distance/1000:5.1f}k km"
+            )
+        except Exception:
+            pass
 
     def clear(self):
         """Clear all ray paths and markers."""
@@ -555,9 +763,9 @@ class Geographic3DWidget(QWidget):
         if not self.gl_widget:
             return
 
-        # Calculate camera azimuth to look at this point
+        # Calculate camera azimuth to look at this point - keep full Earth visible
         azimuth = lon + 180
-        self.gl_widget.setCameraPosition(distance=15000, elevation=30, azimuth=azimuth)
+        self.gl_widget.setCameraPosition(distance=22000, elevation=25, azimuth=azimuth)
 
 
 class SyntheticIonogramWidget(QWidget):

@@ -371,7 +371,10 @@ class HaselgroveSolver:
             integrator.reset()
 
         # Integrate using configured method
-        while state.path_length < max_path_km:
+        max_iterations = 10000  # Safety limit to prevent infinite loops
+        iteration = 0
+        while state.path_length < max_path_km and iteration < max_iterations:
+            iteration += 1
             # Integration step (pluggable or built-in RK4)
             try:
                 if integrator is not None:
