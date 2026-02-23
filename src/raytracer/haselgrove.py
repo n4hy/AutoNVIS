@@ -34,6 +34,7 @@ import logging
 
 from . import EARTH_RADIUS_KM, SPEED_OF_LIGHT
 from .electron_density import IonosphericModel
+from .integrators import BaseIntegrator, IntegrationStep, create_integrator
 
 logger = logging.getLogger(__name__)
 
@@ -229,14 +230,87 @@ class HaselgroveSolver:
     # Numerical parameters
     GRADIENT_DELTA_KM = 1.0  # For numerical gradient calculation
 
-    def __init__(self, ionosphere: IonosphericModel):
+    def __init__(
+        self,
+        ionosphere: IonosphericModel,
+        integrator: Optional[BaseIntegrator] = None,
+        integrator_name: Optional[str] = None,
+    ):
         """
         Initialize the Haselgrove solver.
 
         Args:
             ionosphere: IonosphericModel for refractive index calculation
+            integrator: Pre-configured integrator instance, or None for default RK4
+            integrator_name: Name of integrator to create ('rk4', 'rk45', 'adams_bashforth')
+                           Ignored if integrator is provided.
+
+        Example:
+            # Default RK4 (backward compatible)
+            solver = HaselgroveSolver(ionosphere)
+
+            # Use adaptive RK45
+            solver = HaselgroveSolver(ionosphere, integrator_name='rk45')
+
+            # Use custom integrator
+            from raytracer.integrators import RK45Integrator
+            rk45 = RK45Integrator(solver._derivatives_array, tolerance=1e-8)
+            solver = HaselgroveSolver(ionosphere, integrator=rk45)
         """
         self.ionosphere = ionosphere
+
+        # Store integrator (create later when derivative func is available)
+        self._integrator = integrator
+        self._integrator_name = integrator_name
+
+        # Flag to indicate if we should use pluggable integrator
+        self._use_pluggable_integrator = (integrator is not None or integrator_name is not None)
+
+    def _get_integrator(self) -> Optional[BaseIntegrator]:
+        """Get or create the integrator instance."""
+        if self._integrator is not None:
+            return self._integrator
+
+        if self._integrator_name is not None:
+            self._integrator = create_integrator(
+                self._integrator_name,
+                self._derivatives_array,
+                tolerance=1e-6,
+                min_step=0.01,
+                max_step=self.DEFAULT_STEP_KM,
+            )
+            return self._integrator
+
+        return None
+
+    def _derivatives_array(self, state_array: np.ndarray, freq_mhz: float) -> np.ndarray:
+        """
+        Compute Haselgrove derivatives in array form for integrators.
+
+        This is the interface expected by the pluggable integrators.
+
+        Args:
+            state_array: [x, y, z, kx, ky, kz] as numpy array
+            freq_mhz: Frequency in MHz
+
+        Returns:
+            [dx/ds, dy/ds, dz/ds, dkx/ds, dky/ds, dkz/ds] as numpy array
+        """
+        # Create temporary RayState for compatibility with existing methods
+        temp_state = RayState(
+            x=state_array[0],
+            y=state_array[1],
+            z=state_array[2],
+            kx=state_array[3],
+            ky=state_array[4],
+            kz=state_array[5],
+            frequency_mhz=freq_mhz,
+            mode=self._current_mode,  # Set during trace_ray
+        )
+
+        # Use existing derivatives method
+        derivs = self._derivatives(temp_state)
+        return np.array(derivs)
 
     def trace_ray(
         self,
@@ -274,6 +348,9 @@ class HaselgroveSolver:
             frequency_mhz, mode
         )
 
+        # Store current mode for derivatives_array callback
+        self._current_mode = mode
+
         # Create path object
         path = RayPath(
             start_position=(tx_lat, tx_lon, tx_alt),
@@ -286,11 +363,21 @@ class HaselgroveSolver:
         path.states.append(state.copy())
         max_alt_reached = state.altitude()
 
-        # Integrate using RK4
+        # Get integrator (if configured)
+        integrator = self._get_integrator() if self._use_pluggable_integrator else None
+
+        # Reset integrator state for new ray (important for Adams-Bashforth)
+        if integrator is not None:
+            integrator.reset()
+
+        # Integrate using configured method
         while state.path_length < max_path_km:
-            # RK4 integration step
+            # Integration step (pluggable or built-in RK4)
             try:
-                state = self._rk4_step(state, step_km)
+                if integrator is not None:
+                    state = self._integrator_step(state, step_km, integrator)
+                else:
+                    state = self._rk4_step(state, step_km)
             except Exception as e:
                 logger.warning(f"Integration error: {e}")
                 path.termination = RayTermination.ERROR
@@ -404,6 +491,88 @@ class HaselgroveSolver:
             mode=mode,
             frequency_mhz=frequency_mhz
         )
+
+    def _integrator_step(
+        self,
+        state: RayState,
+        ds: float,
+        integrator: BaseIntegrator,
+    ) -> RayState:
+        """
+        Perform integration step using pluggable integrator.
+
+        This method wraps the integrator interface to work with RayState
+        objects and handles reflection logic.
+
+        Args:
+            state: Current ray state
+            ds: Requested step size in km
+            integrator: Configured integrator instance
+
+        Returns:
+            Updated ray state
+        """
+        # Adaptive step size based on refractive index
+        n = self._get_refractive_index(state)
+        n_real = max(abs(n.real), 0.01)
+        adaptive_ds = ds * min(n_real, 1.0)
+        adaptive_ds = max(adaptive_ds, 0.01)
+
+        # Convert RayState to array for integrator
+        state_array = np.array([
+            state.x, state.y, state.z,
+            state.kx, state.ky, state.kz
+        ])
+
+        # Perform integration step
+        result: IntegrationStep = integrator.step(
+            state_array,
+            adaptive_ds,
+            state.frequency_mhz
+        )
+
+        # Extract new state
+        new_array = result.state
+
+        # Create new RayState
+        new_state = RayState(
+            x=new_array[0],
+            y=new_array[1],
+            z=new_array[2],
+            kx=new_array[3],
+            ky=new_array[4],
+            kz=new_array[5],
+            path_length=state.path_length + result.step_size_used,
+            group_path=state.group_path + self._group_path_increment(state, result.step_size_used),
+            time=state.time + result.step_size_used / (SPEED_OF_LIGHT / 1000),
+            mode=state.mode,
+            frequency_mhz=state.frequency_mhz
+        )
+
+        # Check for reflection (same logic as built-in RK4)
+        n_new = self._get_refractive_index(new_state)
+        if n_new.real < 0.1 and abs(n_new.imag) > 0.1:
+            r = np.sqrt(new_state.x**2 + new_state.y**2 + new_state.z**2)
+            if r > 0:
+                r_x = new_state.x / r
+                r_y = new_state.y / r
+                r_z = new_state.z / r
+
+                k_radial = (new_state.kx * r_x + new_state.ky * r_y + new_state.kz * r_z)
+
+                if k_radial > 0:
+                    new_state.kx -= 2 * k_radial * r_x
+                    new_state.ky -= 2 * k_radial * r_y
+                    new_state.kz -= 2 * k_radial * r_z
+
+        # Normalize wave vector
+        k_mag = np.sqrt(new_state.kx**2 + new_state.ky**2 + new_state.kz**2)
+        if k_mag > 0:
+            new_state.kx /= k_mag
+            new_state.ky /= k_mag
+            new_state.kz /= k_mag
+
+        return new_state
 
     def _rk4_step(self, state: RayState, ds: float) -> RayState:
         """

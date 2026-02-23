@@ -80,6 +80,28 @@ from .nvis_optimizer import (
     SignalQuality,
 )
 
+# Numerical integrators (IONORT-style)
+from .integrators import (
+    BaseIntegrator,
+    IntegrationStep,
+    IntegrationStats,
+    RK4Integrator,
+    AdamsBashforthMoultonIntegrator,
+    RK45Integrator,
+    IntegratorFactory,
+    create_integrator,
+)
+
+# IONORT-style homing algorithm
+from .homing_algorithm import (
+    HomingAlgorithm,
+    HomingResult,
+    HomingSearchSpace,
+    HomingConfig,
+    WinnerTriplet,
+    PropagationMode,
+)
+
 __all__ = [
     # Constants
     'EARTH_RADIUS_KM',
@@ -116,4 +138,20 @@ __all__ = [
     'NVISResult',
     'NVISFrequency',
     'SignalQuality',
+    # Numerical integrators
+    'BaseIntegrator',
+    'IntegrationStep',
+    'IntegrationStats',
+    'RK4Integrator',
+    'AdamsBashforthMoultonIntegrator',
+    'RK45Integrator',
+    'IntegratorFactory',
+    'create_integrator',
+    # Homing algorithm
+    'HomingAlgorithm',
+    'HomingResult',
+    'HomingSearchSpace',
+    'HomingConfig',
+    'WinnerTriplet',
+    'PropagationMode',
 ]
