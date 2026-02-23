@@ -795,13 +795,17 @@ World-class IONORT-style ray tracing implementation based on the IONORT paper (R
    - MUF/LUF vertical markers
    - Winner triplets table
 
-**Live Dashboard** (`scripts/ionort_simple.py`):
+**Live Dashboard**:
 ```bash
-# Launch interactive IONORT dashboard
-python scripts/ionort_simple.py
+# Quick launch (recommended)
+./run_ionort_demo.sh
 
 # Or with full controls
-python scripts/ionort_live_demo.py --tx 40.0,-105.0 --rx 35.0,-106.0 --freq 3,15
+./run_ionort_demo.sh full --tx 40.0,-105.0 --rx 35.0,-106.0 --freq 3,15
+
+# Direct Python invocation
+python scripts/ionort_simple.py
+python scripts/ionort_live_demo.py --tx 40.0,-105.0 --rx 35.0,-106.0
 ```
 
 **Quick Start** (API):
