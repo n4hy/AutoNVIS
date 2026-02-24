@@ -149,6 +149,7 @@ class RayPath:
     mode: RayMode = RayMode.ORDINARY
     termination: RayTermination = RayTermination.MAX_PATH
     landing_position: Optional[Tuple[float, float, float]] = None
+    hop_count: int = 0  # Number of ground reflections
 
     @property
     def total_path_length(self) -> float:
@@ -223,7 +224,7 @@ class HaselgroveSolver:
 
     # Integration parameters
     DEFAULT_STEP_KM = 1.0  # Integration step size
-    MAX_PATH_LENGTH_KM = 5000.0  # Maximum ray path length
+    MAX_PATH_LENGTH_KM = 15000.0  # Maximum ray path length (increased for multi-hop)
     MIN_ALTITUDE_KM = 0.0  # Ground level
     MAX_ALTITUDE_KM = 1000.0  # Escape altitude
 
@@ -323,9 +324,10 @@ class HaselgroveSolver:
         mode: RayMode = RayMode.ORDINARY,
         step_km: float = DEFAULT_STEP_KM,
         max_path_km: float = MAX_PATH_LENGTH_KM,
+        max_hops: int = 3,
     ) -> RayPath:
         """
-        Trace a single ray through the ionosphere.
+        Trace a single ray through the ionosphere with multi-hop support.
 
         Args:
             tx_lat: Transmitter latitude (degrees)
@@ -337,6 +339,7 @@ class HaselgroveSolver:
             mode: O-mode or X-mode
             step_km: Integration step size (km)
             max_path_km: Maximum path length before termination (km)
+            max_hops: Maximum number of ground reflections (default 3)
 
         Returns:
             RayPath with complete trajectory
@@ -362,6 +365,7 @@ class HaselgroveSolver:
         # Store initial state
         path.states.append(state.copy())
         max_alt_reached = state.altitude()
+        hop_count = 0
 
         # Get integrator (if configured)
         integrator = self._get_integrator() if self._use_pluggable_integrator else None
@@ -371,7 +375,7 @@ class HaselgroveSolver:
             integrator.reset()
 
         # Integrate using configured method
-        max_iterations = 10000  # Safety limit to prevent infinite loops
+        max_iterations = 50000  # Increased for multi-hop paths
         iteration = 0
         while state.path_length < max_path_km and iteration < max_iterations:
             iteration += 1
@@ -386,7 +390,7 @@ class HaselgroveSolver:
                 path.termination = RayTermination.ERROR
                 break
 
-            # Track maximum altitude reached
+            # Track maximum altitude reached (reset after each hop)
             current_alt = state.altitude()
             max_alt_reached = max(max_alt_reached, current_alt)
 
@@ -396,12 +400,28 @@ class HaselgroveSolver:
             # Check termination conditions (after integration step)
             termination = self._check_termination(state, max_alt_reached)
             if termination:
-                path.termination = termination
-                break
+                if termination == RayTermination.GROUND_HIT:
+                    hop_count += 1
+                    if hop_count < max_hops:
+                        # Reflect ray off ground and continue
+                        state = self._reflect_at_ground(state)
+                        max_alt_reached = 0  # Reset for next hop
+                        path.states.append(state.copy())
+                        continue
+                    else:
+                        # Final hop - terminate
+                        path.termination = termination
+                        break
+                else:
+                    path.termination = termination
+                    break
 
         # Set landing position if ground hit
         if path.termination == RayTermination.GROUND_HIT:
             path.landing_position = state.lat_lon_alt()
+
+        # Store hop count in path
+        path.hop_count = hop_count
 
         return path
 
@@ -811,6 +831,73 @@ class HaselgroveSolver:
             return RayTermination.ESCAPE
 
         return None
+
+    def _reflect_at_ground(self, state: RayState) -> RayState:
+        """
+        Reflect ray off the ground for multi-hop propagation.
+
+        Performs specular reflection by reversing the radial (vertical)
+        component of the wave vector while preserving the tangential
+        (horizontal) component.
+
+        Args:
+            state: Ray state at ground level
+
+        Returns:
+            New state with wave vector reflected upward
+        """
+        # Get position vector and normalize to get radial unit vector
+        r = np.sqrt(state.x**2 + state.y**2 + state.z**2)
+        if r < 1e-6:
+            return state.copy()  # Safety check
+
+        # Radial unit vector (pointing outward/up from Earth center)
+        r_x = state.x / r
+        r_y = state.y / r
+        r_z = state.z / r
+
+        # Current wave vector
+        kx, ky, kz = state.kx, state.ky, state.kz
+
+        # Compute radial component of wave vector
+        # k_radial = k · r_hat (should be negative since ray is coming down)
+        k_radial = kx * r_x + ky * r_y + kz * r_z
+
+        # Specular reflection: k_new = k - 2*(k·n)*n
+        # where n is the surface normal (radial direction)
+        # This reverses the radial component while preserving tangential
+        kx_new = kx - 2 * k_radial * r_x
+        ky_new = ky - 2 * k_radial * r_y
+        kz_new = kz - 2 * k_radial * r_z
+
+        # Normalize the reflected wave vector
+        k_mag = np.sqrt(kx_new**2 + ky_new**2 + kz_new**2)
+        if k_mag > 1e-6:
+            kx_new /= k_mag
+            ky_new /= k_mag
+            kz_new /= k_mag
+
+        # Create reflected state - keep position, change wave vector direction
+        reflected = RayState(
+            x=state.x,
+            y=state.y,
+            z=state.z,
+            kx=kx_new,
+            ky=ky_new,
+            kz=kz_new,
+            path_length=state.path_length,
+            group_path=state.group_path,
+            time=state.time,
+            mode=state.mode,
+            frequency_mhz=state.frequency_mhz
+        )
+
+        logger.debug(
+            f"Ground reflection: k_radial={k_radial:.4f} -> "
+            f"new k_radial={kx_new*r_x + ky_new*r_y + kz_new*r_z:.4f}"
+        )
+
+        return reflected
 
 
 def test_ray_trace():

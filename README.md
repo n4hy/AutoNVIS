@@ -2,7 +2,7 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
-**Version:** 0.3.1 | **Status:** ✅ Production Ready (Filter Core + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Live Dashboard) | **Last Updated:** February 23, 2026
+**Version:** 0.3.2 | **Status:** ✅ Production Ready (Filter Core + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Live Dashboard + Multi-Hop + Link Budget) | **Last Updated:** February 23, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-73%25%20passing-yellow)]()
@@ -63,7 +63,9 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 
 **Result**: Continuous, accurate NVIS frequency planning during Solar Cycle 25 volatility.
 
-**New in v0.3.0**: Full IONORT-style implementation with RK4/RK45/Adams-Bashforth integrators, winner triplet homing, and three visualization widgets (Altitude vs Ground Range, 3D Geographic, Synthetic Ionogram). See [IONORT.md](IONORT.md) for details.
+**New in v0.3.2**: Multi-hop ray tracing for long-distance paths (4000+ km), comprehensive link budget calculator with SNR/path loss/D-layer absorption, real-time GIRO ionosonde client, and enhanced live dashboard with diagnostic console.
+
+**v0.3.0 Features**: Full IONORT-style implementation with RK4/RK45/Adams-Bashforth integrators, winner triplet homing, and three visualization widgets (Altitude vs Ground Range, 3D Geographic, Synthetic Ionogram). See [IONORT.md](IONORT.md) for details.
 
 ### Key Features
 
@@ -73,6 +75,8 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 ✅ **Space Weather Adaptive** - Automatic QUIET ↔ SHOCK mode switching
 ✅ **Memory Efficient** - 100× reduction via localization (640 GB → 2 GB)
 ✅ **IONORT-Style Ray Tracing** - Three integrators, homing algorithm, winner triplets
+✅ **Multi-Hop Propagation** - Ground reflection for long-distance paths (4000+ km)
+✅ **Link Budget Calculator** - SNR, path loss, D-layer absorption, ITU-R P.372 noise
 ✅ **Professional Visualizations** - Altitude/Range, 3D Geographic, Synthetic Ionogram
 ✅ **Rigorously Tested** - 284 brutal tests, 78% passing (222/284)
 ✅ **Well Documented** - 6,000+ lines of technical documentation
@@ -832,6 +836,86 @@ print(f"MUF: {result.muf:.1f} MHz, Winners: {result.num_winners}")
 **Documentation**: See [IONORT.md](IONORT.md) for complete implementation details.
 
 **Status**: ✅ Complete with 51 unit tests, live dashboard operational
+
+### 10a. Multi-Hop Ray Tracing
+
+Support for long-distance HF paths requiring multiple ionospheric reflections.
+
+**Features**:
+- Ground reflection with specular reflection model
+- Configurable maximum hop count (default: 3)
+- Supports paths up to 15,000 km
+- SNR calculation per path with link budget integration
+
+**Ground Reflection Physics**:
+```
+k_new = k - 2(k·n̂)n̂
+```
+where k is the wave vector and n̂ is the surface normal.
+
+**Usage**:
+```python
+from src.raytracer import HaselgroveSolver, HomingConfig
+
+# Enable multi-hop tracing
+config = HomingConfig(max_hops=3)
+solver = HaselgroveSolver(ionosphere)
+
+# Trace LA to NYC (~4000 km)
+result = homing.find_paths(
+    tx_lat=34.0, tx_lon=-118.0,  # Los Angeles
+    rx_lat=40.7, rx_lon=-74.0,   # New York City
+    search_space=search
+)
+```
+
+### 10b. Link Budget Calculator
+
+Comprehensive HF link budget with SNR calculation.
+
+**Implementation**: `src/raytracer/link_budget.py` (~760 LOC)
+
+**Key Components**:
+- Free-space path loss (FSPL)
+- D-layer absorption (solar zenith angle dependent)
+- Ground reflection loss per hop
+- Deviative absorption (ray path through plasma)
+- Ionospheric focusing gain
+- ITU-R P.372 noise model (atmospheric + galactic + man-made)
+
+**D-Layer Absorption Model**:
+```
+L_d = L_base × (10/f)² × cos(χ)^0.75 × X-ray_factor × hops
+```
+where f is frequency, χ is solar zenith angle, and X-ray_factor accounts for solar flare conditions.
+
+**Usage**:
+```python
+from src.raytracer.link_budget import (
+    LinkBudgetCalculator, TransmitterConfig, ReceiverConfig, AntennaConfig
+)
+
+calc = LinkBudgetCalculator(
+    tx_config=TransmitterConfig(power_watts=100),
+    rx_config=ReceiverConfig(bandwidth_hz=2400),
+    tx_antenna=AntennaConfig(gain_dbi=2.15),
+    rx_antenna=AntennaConfig(gain_dbi=6.0)
+)
+
+result = calc.calculate(
+    frequency_mhz=7.0,
+    path_length_km=500,
+    reflection_height_km=280,
+    hop_count=1,
+    tx_lat=40.0, tx_lon=-105.0
+)
+
+print(f"SNR: {result.snr_db:.1f} dB")
+print(f"Signal: {result.signal_strength_dbm:.1f} dBm")
+print(f"Path Loss: {result.total_path_loss_db:.1f} dB")
+```
+
+**Status**: ✅ Complete and integrated with homing algorithm
 
 ### 11. Python-C++ Integration Layer
 
@@ -2081,20 +2165,22 @@ If you use Auto-NVIS in your research, please cite:
 
 ## Project Statistics
 
-- **Total Lines of Code**: ~20,900 (C++/Python production)
-- **Ray Tracer Package**: ~8,100 LOC (IONORT-style 3D magnetoionic ray tracing)
+- **Total Lines of Code**: ~22,500 (C++/Python production)
+- **Ray Tracer Package**: ~9,700 LOC (IONORT-style 3D magnetoionic ray tracing)
   - Core ray tracing: ~3,700 LOC
   - IONORT integrators: ~1,500 LOC
-  - Homing algorithm: ~700 LOC
-  - IONORT visualizations: ~1,000 LOC
-  - Unit tests: ~1,000 LOC
+  - Homing algorithm: ~1,100 LOC (expanded for multi-hop + SNR)
+  - Link budget calculator: ~760 LOC
+  - IONORT visualizations: ~1,400 LOC (with diagnostic console)
+  - Unit tests: ~1,200 LOC
+- **Data Ingestion**: ~3,000 LOC (GIRO client, live ionosonde)
 - **Test Infrastructure**: ~4,500 LOC (284 brutal tests)
 - **Documentation**: ~6,000 lines across 35+ documents
 - **Development Time**: 3.5 months (Phase 1-12)
 - **Test Pass Rate**: 78% (222/284 tests)
 - **CPU Stress Tests**: 110s brutal system integration ✅
 - **Contributors**: [TBD]
-- **Last Updated**: February 22, 2026
+- **Last Updated**: February 23, 2026
 
 ---
 
@@ -2150,7 +2236,7 @@ This ensures the system can handle real-world solar storms and production worklo
 
 ---
 
-**Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing)
-**Last Updated**: February 22, 2026
-**Version**: 0.3.0
-**Next Milestone**: Test Failure Resolution + Ionosonde Integration (Phases 13-14)
+**Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Multi-Hop + Link Budget)
+**Last Updated**: February 23, 2026
+**Version**: 0.3.2
+**Next Milestone**: Test Failure Resolution + Extended Validation (Phases 13-14)

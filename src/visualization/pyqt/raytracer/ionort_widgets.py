@@ -1151,6 +1151,16 @@ class IONORTVisualizationPanel(QWidget):
 
         # Process winner triplets
         triplet_dicts = []
+        paths_with_data = 0
+        paths_without_data = 0
+
+        # Find best SNR winner for highlighting
+        best_snr_winner = None
+        if result.winner_triplets:
+            snr_winners = [w for w in result.winner_triplets if w.snr_db is not None]
+            if snr_winners:
+                best_snr_winner = max(snr_winners, key=lambda w: w.snr_db)
+
         for w in result.winner_triplets:
             # Add to ionogram data
             if w.mode.value == 'O':
@@ -1162,6 +1172,7 @@ class IONORTVisualizationPanel(QWidget):
 
             # Add ray path if available
             if w.ray_path and w.ray_path.states:
+                paths_with_data += 1
                 positions = [s.lat_lon_alt() for s in w.ray_path.states]
                 is_reflected = w.ray_path.termination.value == 'ground'
                 is_o_mode = w.mode.value == 'O'
@@ -1176,15 +1187,30 @@ class IONORTVisualizationPanel(QWidget):
                 self.geographic_widget.add_ray_path(
                     positions, w.frequency_mhz, freq_min, freq_max
                 )
+            else:
+                paths_without_data += 1
 
-            # Table entry
-            triplet_dicts.append({
+            # Table entry - include SNR if available
+            entry = {
                 'frequency_mhz': w.frequency_mhz,
                 'elevation_deg': w.elevation_deg,
                 'azimuth_deg': w.azimuth_deg,
                 'group_delay_ms': w.group_delay_ms,
                 'mode': w.mode.value,
-            })
+                'hop_count': getattr(w, 'hop_count', 1),
+            }
+            if w.snr_db is not None:
+                entry['snr_db'] = w.snr_db
+            triplet_dicts.append(entry)
+
+        # Log diagnostic info
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Visualization: {paths_with_data} paths with data, {paths_without_data} without")
+        if best_snr_winner:
+            has_path = "YES" if (best_snr_winner.ray_path and best_snr_winner.ray_path.states) else "NO"
+            logger.info(f"Best SNR: {best_snr_winner.frequency_mhz:.1f} MHz, "
+                       f"{best_snr_winner.snr_db:.0f} dB, path data: {has_path}")
 
         # Update ionogram
         self.ionogram_widget.set_o_mode_trace(o_freqs, o_delays)

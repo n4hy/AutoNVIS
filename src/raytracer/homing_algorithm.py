@@ -29,11 +29,16 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Callable
 from enum import Enum
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+import multiprocessing
 import time
 import logging
 
 from .haselgrove import HaselgroveSolver, RayPath, RayMode, RayTermination, RayState
+
+# Re-export for worker function
+__all__ = ['HomingAlgorithm', 'HomingConfig', 'HomingSearchSpace', 'HomingResult',
+           'WinnerTriplet', 'PropagationMode']
 from .electron_density import IonosphericModel
 
 logger = logging.getLogger(__name__)
@@ -67,6 +72,9 @@ class WinnerTriplet:
         ray_path: Full ray path data (optional, for visualization)
         reflection_height_km: Approximate reflection altitude (km)
         hop_count: Number of ionospheric hops (1 = single hop, 2 = two hops)
+        snr_db: Predicted signal-to-noise ratio (dB, None if not calculated)
+        signal_strength_dbm: Predicted signal at receiver (dBm)
+        path_loss_db: Total path loss (dB)
     """
     frequency_mhz: float
     elevation_deg: float
@@ -81,13 +89,18 @@ class WinnerTriplet:
     ray_path: Optional[RayPath] = None
     reflection_height_km: float = 0.0
     hop_count: int = 1
+    snr_db: Optional[float] = None
+    signal_strength_dbm: Optional[float] = None
+    path_loss_db: Optional[float] = None
 
     def __repr__(self) -> str:
+        snr_str = f", SNR={self.snr_db:.0f}dB" if self.snr_db is not None else ""
         return (f"WinnerTriplet(f={self.frequency_mhz:.1f}MHz, "
                 f"el={self.elevation_deg:.1f}°, "
                 f"az={self.azimuth_deg:.1f}°, "
                 f"err={self.landing_error_km:.1f}km, "
-                f"mode={self.mode.value})")
+                f"hops={self.hop_count}, "
+                f"mode={self.mode.value}{snr_str})")
 
 
 @dataclass
@@ -163,6 +176,9 @@ class HomingConfig:
         trace_both_modes: If True, trace both O-mode and X-mode
         store_ray_paths: If True, store full ray paths in winners (memory intensive)
         max_workers: Number of parallel workers for ray tracing
+        step_km: Ray integration step size in km (larger=faster, less accurate)
+        use_multiprocessing: If True, use ProcessPoolExecutor (true parallelism)
+        max_hops: Maximum ground reflections for multi-hop paths (default 3)
     """
     lat_tolerance_deg: float = 1.0
     lon_tolerance_deg: float = 1.0
@@ -171,6 +187,117 @@ class HomingConfig:
     trace_both_modes: bool = True
     store_ray_paths: bool = False
     max_workers: int = 4
+    step_km: float = 1.0  # Integration step size
+    use_multiprocessing: bool = True  # Use processes instead of threads
+    max_hops: int = 3  # Maximum ground reflections for multi-hop
+
+
+# Global worker state for multiprocessing (each process gets its own copy)
+_worker_solver = None
+_worker_config = None
+
+
+def _init_worker(ionosphere_params: dict, integrator_name: str, config_dict: dict):
+    """Initialize worker process with its own solver instance."""
+    global _worker_solver, _worker_config
+    from .electron_density import IonosphericModel
+    from .haselgrove import HaselgroveSolver
+
+    # Recreate ionosphere model in this process
+    ionosphere = IonosphericModel()
+    ionosphere.update_from_realtime(
+        foF2=ionosphere_params.get('foF2', 7.0),
+        hmF2=ionosphere_params.get('hmF2', 300.0),
+    )
+
+    # Create solver for this process
+    _worker_solver = HaselgroveSolver(ionosphere, integrator_name=integrator_name)
+    _worker_config = config_dict
+
+
+def _trace_ray_worker(args: tuple) -> Optional[WinnerTriplet]:
+    """Worker function for parallel ray tracing (runs in separate process)."""
+    global _worker_solver, _worker_config
+
+    (freq, elev, azimuth, mode_str,
+     tx_lat, tx_lon, tx_alt,
+     rx_lat, rx_lon, gc_azimuth) = args
+
+    mode = PropagationMode.O_MODE if mode_str == "O" else PropagationMode.X_MODE
+    ray_mode = RayMode.ORDINARY if mode == PropagationMode.O_MODE else RayMode.EXTRAORDINARY
+
+    try:
+        # Trace the ray with multi-hop support
+        path = _worker_solver.trace_ray(
+            tx_lat=tx_lat,
+            tx_lon=tx_lon,
+            tx_alt=tx_alt,
+            elevation=elev,
+            azimuth=azimuth,
+            frequency_mhz=freq,
+            mode=ray_mode,
+            step_km=_worker_config.get('step_km', 1.0),
+            max_hops=_worker_config.get('max_hops', 3),
+        )
+
+        # Check termination
+        if path.termination != RayTermination.GROUND_HIT:
+            return None
+
+        if path.landing_position is None:
+            return None
+
+        land_lat, land_lon, land_alt = path.landing_position
+
+        # Calculate distance error
+        lat1_r = np.radians(land_lat)
+        lat2_r = np.radians(rx_lat)
+        lon1_r = np.radians(land_lon)
+        lon2_r = np.radians(rx_lon)
+
+        dlat = lat2_r - lat1_r
+        dlon = lon2_r - lon1_r
+
+        a = np.sin(dlat/2)**2 + np.cos(lat1_r) * np.cos(lat2_r) * np.sin(dlon/2)**2
+        c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
+        distance_error = 6371.0 * c
+
+        # Check tolerance
+        tolerance = _worker_config.get('distance_tolerance_km', 100.0)
+        if distance_error > tolerance:
+            return None
+
+        # Calculate azimuth deviation
+        az_deviation = azimuth - gc_azimuth
+        if az_deviation > 180:
+            az_deviation -= 360
+        elif az_deviation < -180:
+            az_deviation += 360
+
+        # Group delay
+        group_delay_ms = path.group_path_length / 299.792458
+
+        # Reflection height
+        reflection_height = max(s.altitude() for s in path.states) if path.states else 0.0
+
+        return WinnerTriplet(
+            frequency_mhz=freq,
+            elevation_deg=elev,
+            azimuth_deg=azimuth,
+            azimuth_deviation_deg=az_deviation,
+            group_delay_ms=group_delay_ms,
+            ground_range_km=path.ground_range,
+            landing_lat=land_lat,
+            landing_lon=land_lon,
+            landing_error_km=distance_error,
+            mode=mode,
+            ray_path=None,  # Don't store paths in multiprocessing (not picklable)
+            reflection_height_km=reflection_height,
+            hop_count=path.hop_count,  # Get hop count from traced path
+        )
+
+    except Exception as e:
+        return None
 
 
 @dataclass
@@ -264,6 +391,9 @@ class HomingAlgorithm:
         print(f"MUF: {result.muf:.1f} MHz")
         for w in result.winner_triplets[:5]:
             print(f"  {w.frequency_mhz:.1f} MHz at {w.elevation_deg:.0f}° elevation")
+
+        # Cancellation support:
+        homing.cancel()  # Call from another thread to stop
     """
 
     # Earth radius for great circle calculations
@@ -283,6 +413,50 @@ class HomingAlgorithm:
         """
         self.solver = solver
         self.config = config or HomingConfig()
+        self._cancelled = False
+        self._executor = None  # Track executor for cleanup
+        self._active_processes = []  # Track spawned processes
+
+    def cancel(self):
+        """Cancel the running homing algorithm."""
+        self._cancelled = True
+        logger.info("Homing algorithm cancellation requested")
+        self._force_shutdown()
+
+    def _force_shutdown(self):
+        """Force shutdown of any running executor/processes."""
+        if self._executor is not None:
+            try:
+                # First try graceful shutdown with short timeout
+                self._executor.shutdown(wait=True, cancel_futures=True)
+            except Exception as e:
+                logger.debug(f"Executor shutdown: {e}")
+            self._executor = None
+
+        # Terminate any tracked processes
+        for proc in self._active_processes:
+            try:
+                if proc.is_alive():
+                    proc.terminate()
+                    proc.join(timeout=0.5)
+                    if proc.is_alive():
+                        proc.kill()
+            except Exception:
+                pass
+        self._active_processes.clear()
+
+    def is_cancelled(self) -> bool:
+        """Check if cancellation was requested."""
+        return self._cancelled
+
+    def reset(self):
+        """Reset cancellation flag for a new run."""
+        self._cancelled = False
+
+    def cleanup(self):
+        """Clean up all resources. Call this before destroying the algorithm."""
+        self.cancel()
+        self._force_shutdown()
 
     def find_paths(
         self,
@@ -314,6 +488,9 @@ class HomingAlgorithm:
         Returns:
             HomingResult with all winner triplets and statistics
         """
+        # Reset cancellation flag for new run
+        self._cancelled = False
+
         start_time = time.time()
         search_space = search_space or HomingSearchSpace()
 
@@ -445,6 +622,11 @@ class HomingAlgorithm:
         total = len(triplets)
 
         for i, (freq, elev, azimuth, mode) in enumerate(triplets):
+            # Check for cancellation
+            if self._cancelled:
+                logger.info(f"Homing cancelled at {i}/{total} rays")
+                break
+
             winner = self._trace_and_check(
                 freq, elev, azimuth, mode,
                 tx_lat, tx_lon, tx_alt,
@@ -469,7 +651,201 @@ class HomingAlgorithm:
         rx_lat: float, rx_lon: float, gc_range: float,
         progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> List[WinnerTriplet]:
-        """Trace rays in parallel using ThreadPoolExecutor."""
+        """Trace rays in parallel using ProcessPoolExecutor or ThreadPoolExecutor."""
+        winners = []
+        total = len(triplets)
+        completed = 0
+
+        # Get great circle azimuth for workers
+        gc_azimuth = self._great_circle_geometry(tx_lat, tx_lon, rx_lat, rx_lon)[1]
+
+        if self.config.use_multiprocessing:
+            # Use ProcessPoolExecutor for true parallelism (bypasses GIL)
+            winners = self._trace_multiprocess(
+                triplets, tx_lat, tx_lon, tx_alt,
+                rx_lat, rx_lon, gc_azimuth,
+                progress_callback
+            )
+        else:
+            # Fall back to ThreadPoolExecutor
+            winners = self._trace_threaded(
+                triplets, tx_lat, tx_lon, tx_alt,
+                rx_lat, rx_lon, gc_range,
+                progress_callback
+            )
+
+        # If multiprocessing was used and we need ray paths, re-trace winners
+        if self.config.use_multiprocessing and self.config.store_ray_paths and winners:
+            winners = self._retrace_winners_for_paths(
+                winners, tx_lat, tx_lon, tx_alt, gc_azimuth
+            )
+
+        return winners
+
+    def _retrace_winners_for_paths(
+        self,
+        winners: List[WinnerTriplet],
+        tx_lat: float, tx_lon: float, tx_alt: float,
+        gc_azimuth: float,
+    ) -> List[WinnerTriplet]:
+        """Re-trace winner rays in main process to get full paths for visualization."""
+        logger.info(f"Re-tracing {len(winners)} winners for visualization paths...")
+        updated_winners = []
+        success_count = 0
+        fail_count = 0
+
+        for w in winners:
+            ray_mode = RayMode.ORDINARY if w.mode == PropagationMode.O_MODE else RayMode.EXTRAORDINARY
+            try:
+                path = self.solver.trace_ray(
+                    tx_lat=tx_lat,
+                    tx_lon=tx_lon,
+                    tx_alt=tx_alt,
+                    elevation=w.elevation_deg,
+                    azimuth=w.azimuth_deg,
+                    frequency_mhz=w.frequency_mhz,
+                    mode=ray_mode,
+                    step_km=self.config.step_km,
+                    max_hops=self.config.max_hops,
+                )
+
+                # Verify the path has states
+                if path.states and len(path.states) > 1:
+                    # Create new winner with ray_path attached
+                    updated_winner = WinnerTriplet(
+                        frequency_mhz=w.frequency_mhz,
+                        elevation_deg=w.elevation_deg,
+                        azimuth_deg=w.azimuth_deg,
+                        azimuth_deviation_deg=w.azimuth_deviation_deg,
+                        group_delay_ms=w.group_delay_ms,
+                        ground_range_km=w.ground_range_km,
+                        landing_lat=w.landing_lat,
+                        landing_lon=w.landing_lon,
+                        landing_error_km=w.landing_error_km,
+                        mode=w.mode,
+                        ray_path=path,  # Now has the full path
+                        reflection_height_km=w.reflection_height_km,
+                        hop_count=w.hop_count,
+                        snr_db=w.snr_db,
+                        signal_strength_dbm=w.signal_strength_dbm,
+                        path_loss_db=w.path_loss_db,
+                    )
+                    updated_winners.append(updated_winner)
+                    success_count += 1
+                    logger.debug(f"Re-traced {w.frequency_mhz:.1f} MHz: {len(path.states)} states")
+                else:
+                    logger.warning(f"Re-trace {w.frequency_mhz:.1f} MHz: empty path")
+                    updated_winners.append(w)
+                    fail_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to re-trace {w.frequency_mhz:.1f} MHz winner: {e}")
+                updated_winners.append(w)  # Keep original without path
+                fail_count += 1
+
+        logger.info(f"Re-traced {success_count}/{len(winners)} winners with paths ({fail_count} failed)")
+        return updated_winners
+
+    def _trace_multiprocess(
+        self,
+        triplets: List[Tuple[float, float, float, PropagationMode]],
+        tx_lat: float, tx_lon: float, tx_alt: float,
+        rx_lat: float, rx_lon: float, gc_azimuth: float,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> List[WinnerTriplet]:
+        """Trace rays using ProcessPoolExecutor for true parallelism."""
+        winners = []
+        total = len(triplets)
+        completed = 0
+
+        # Prepare ionosphere parameters for workers
+        iono_params = {
+            'foF2': self.solver.ionosphere._default_profile.foF2,
+            'hmF2': self.solver.ionosphere._default_profile.hmF2,
+        }
+
+        # Prepare config for workers
+        config_dict = {
+            'step_km': self.config.step_km,
+            'distance_tolerance_km': self.config.distance_tolerance_km,
+            'store_ray_paths': False,  # Can't pickle ray paths
+            'max_hops': self.config.max_hops,
+        }
+
+        # Prepare work items (must be picklable)
+        work_items = [
+            (freq, elev, azimuth, mode.value,  # mode.value is "O" or "X" string
+             tx_lat, tx_lon, tx_alt,
+             rx_lat, rx_lon, gc_azimuth)
+            for freq, elev, azimuth, mode in triplets
+        ]
+
+        # Get integrator name from solver
+        integrator_name = getattr(self.solver, '_integrator_name', 'rk4')
+
+        logger.info(f"Starting multiprocess ray tracing with {self.config.max_workers} workers")
+
+        # Use spawn context for clean process isolation
+        mp_context = multiprocessing.get_context('spawn')
+
+        try:
+            self._executor = ProcessPoolExecutor(
+                max_workers=self.config.max_workers,
+                mp_context=mp_context,
+                initializer=_init_worker,
+                initargs=(iono_params, integrator_name, config_dict)
+            )
+
+            try:
+                # Submit all work
+                futures = {self._executor.submit(_trace_ray_worker, item): item for item in work_items}
+
+                # Collect results
+                for future in as_completed(futures):
+                    if self._cancelled:
+                        logger.info(f"Homing cancelled at {completed}/{total} rays")
+                        break
+
+                    completed += 1
+                    try:
+                        winner = future.result(timeout=30)  # Timeout per ray
+                        if winner is not None:
+                            winners.append(winner)
+                    except Exception as e:
+                        logger.debug(f"Ray trace failed: {e}")
+
+                    if progress_callback and (completed % 10 == 0 or completed == total):
+                        progress_callback(completed, total)
+
+            finally:
+                # Always clean up executor properly to avoid semaphore leaks
+                try:
+                    self._executor.shutdown(wait=True, cancel_futures=True)
+                except Exception:
+                    pass
+                self._executor = None
+
+        except Exception as e:
+            logger.warning(f"Multiprocessing failed, falling back to threads: {e}")
+            self._executor = None
+            # Fall back to threaded execution
+            return self._trace_threaded(
+                triplets, tx_lat, tx_lon, tx_alt,
+                rx_lat, rx_lon, 0, progress_callback
+            )
+
+        if progress_callback:
+            progress_callback(completed, total)
+
+        return winners
+
+    def _trace_threaded(
+        self,
+        triplets: List[Tuple[float, float, float, PropagationMode]],
+        tx_lat: float, tx_lon: float, tx_alt: float,
+        rx_lat: float, rx_lon: float, gc_range: float,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> List[WinnerTriplet]:
+        """Trace rays using ThreadPoolExecutor (GIL-limited but works as fallback)."""
         winners = []
         total = len(triplets)
         completed = 0
@@ -488,6 +864,14 @@ class HomingAlgorithm:
 
             # Collect results as they complete
             for future in as_completed(futures):
+                # Check for cancellation
+                if self._cancelled:
+                    logger.info(f"Homing cancelled at {completed}/{total} rays - cancelling pending tasks")
+                    # Cancel remaining futures
+                    for f in futures:
+                        f.cancel()
+                    break
+
                 completed += 1
                 try:
                     winner = future.result()
@@ -499,9 +883,9 @@ class HomingAlgorithm:
                 if progress_callback and (completed % 10 == 0 or completed == total):
                     progress_callback(completed, total)
 
-        # Final progress call
+        # Final progress call (even if cancelled, report where we got to)
         if progress_callback:
-            progress_callback(total, total)
+            progress_callback(completed, total)
 
         return winners
 
@@ -530,7 +914,7 @@ class HomingAlgorithm:
         ray_mode = RayMode.ORDINARY if mode == PropagationMode.O_MODE else RayMode.EXTRAORDINARY
 
         try:
-            # Trace the ray
+            # Trace the ray with multi-hop support
             path = self.solver.trace_ray(
                 tx_lat=tx_lat,
                 tx_lon=tx_lon,
@@ -539,6 +923,8 @@ class HomingAlgorithm:
                 azimuth=azimuth,
                 frequency_mhz=freq,
                 mode=ray_mode,
+                step_km=self.config.step_km,
+                max_hops=self.config.max_hops,
             )
 
             # Check termination - only ground hits are potential winners
@@ -587,7 +973,7 @@ class HomingAlgorithm:
                 mode=mode,
                 ray_path=path if self.config.store_ray_paths else None,
                 reflection_height_km=reflection_height,
-                hop_count=1,  # TODO: detect multi-hop
+                hop_count=path.hop_count,  # Multi-hop count from traced path
             )
 
             return winner
@@ -705,5 +1091,102 @@ class HomingAlgorithm:
             )
         finally:
             self.config = saved_config
+
+        return result
+
+    def calculate_snr_for_winners(
+        self,
+        result: 'HomingResult',
+        tx_power_watts: float = 100.0,
+        tx_antenna_gain_dbi: float = 0.0,
+        rx_antenna_gain_dbi: float = 0.0,
+        rx_bandwidth_hz: float = 3000.0,
+        xray_flux: float = 1e-6,
+        kp_index: float = 2.0,
+        is_night: bool = False,
+        noise_environment: str = "rural",
+    ) -> 'HomingResult':
+        """
+        Calculate SNR for all winner triplets in a homing result.
+
+        Args:
+            result: HomingResult with winner triplets
+            tx_power_watts: Transmitter power
+            tx_antenna_gain_dbi: TX antenna gain in dBi
+            rx_antenna_gain_dbi: RX antenna gain in dBi
+            rx_bandwidth_hz: Receiver bandwidth (Hz)
+            xray_flux: GOES X-ray flux (W/m²) - affects D-layer absorption
+            kp_index: Geomagnetic Kp index (0-9)
+            is_night: True if nighttime propagation
+            noise_environment: One of 'quiet_rural', 'rural', 'residential', 'urban', 'industrial'
+
+        Returns:
+            Updated HomingResult with SNR values populated
+        """
+        from .link_budget import (
+            LinkBudgetCalculator,
+            TransmitterConfig,
+            ReceiverConfig,
+            AntennaConfig,
+            NoiseEnvironment,
+            calculate_solar_zenith_angle,
+        )
+
+        calc = LinkBudgetCalculator()
+
+        # Map noise environment string to enum
+        env_map = {
+            'quiet_rural': NoiseEnvironment.QUIET_RURAL,
+            'rural': NoiseEnvironment.RURAL,
+            'residential': NoiseEnvironment.RESIDENTIAL,
+            'urban': NoiseEnvironment.URBAN,
+            'industrial': NoiseEnvironment.INDUSTRIAL,
+        }
+        noise_env = env_map.get(noise_environment.lower(), NoiseEnvironment.RURAL)
+
+        # Configure TX/RX
+        tx_config = TransmitterConfig(
+            power_watts=tx_power_watts,
+            antenna=AntennaConfig(gain_dbi=tx_antenna_gain_dbi),
+        )
+        rx_config = ReceiverConfig(
+            antenna=AntennaConfig(gain_dbi=rx_antenna_gain_dbi),
+            bandwidth_hz=rx_bandwidth_hz,
+            noise_environment=noise_env,
+        )
+
+        # Calculate midpoint latitude for noise calculations
+        mid_lat = (result.tx_position[0] + result.rx_position[0]) / 2
+
+        # Calculate solar zenith angle at midpoint
+        mid_lon = (result.tx_position[1] + result.rx_position[1]) / 2
+        try:
+            solar_zenith = calculate_solar_zenith_angle(mid_lat, mid_lon)
+        except Exception:
+            solar_zenith = 45.0  # Default
+
+        # Calculate SNR for each winner
+        for winner in result.winner_triplets:
+            try:
+                link_result = calc.calculate_for_winner(
+                    winner,
+                    tx_config=tx_config,
+                    rx_config=rx_config,
+                    xray_flux=xray_flux,
+                    kp_index=kp_index,
+                    solar_zenith_angle_deg=solar_zenith,
+                    is_night=is_night,
+                    latitude_deg=mid_lat,
+                )
+
+                winner.snr_db = link_result.snr_db
+                winner.signal_strength_dbm = link_result.signal_power_dbw + 30
+                winner.path_loss_db = link_result.total_path_loss_db
+
+            except Exception as e:
+                logger.debug(f"SNR calculation failed for winner: {e}")
+                winner.snr_db = None
+                winner.signal_strength_dbm = None
+                winner.path_loss_db = None
 
         return result

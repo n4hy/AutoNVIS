@@ -102,6 +102,19 @@ from .homing_algorithm import (
     PropagationMode,
 )
 
+# Link budget calculator
+from .link_budget import (
+    LinkBudgetCalculator,
+    LinkBudgetResult,
+    PropagationLosses,
+    TransmitterConfig,
+    ReceiverConfig,
+    AntennaConfig,
+    NoiseEnvironment,
+    calculate_solar_zenith_angle,
+    is_nighttime,
+)
+
 __all__ = [
     # Constants
     'EARTH_RADIUS_KM',
@@ -154,4 +167,14 @@ __all__ = [
     'HomingConfig',
     'WinnerTriplet',
     'PropagationMode',
+    # Link budget
+    'LinkBudgetCalculator',
+    'LinkBudgetResult',
+    'PropagationLosses',
+    'TransmitterConfig',
+    'ReceiverConfig',
+    'AntennaConfig',
+    'NoiseEnvironment',
+    'calculate_solar_zenith_angle',
+    'is_nighttime',
 ]

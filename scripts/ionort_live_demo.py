@@ -1,35 +1,40 @@
 #!/usr/bin/env python3
 """
-IONORT Live Dashboard Demo
+IONORT Live Dashboard Demo with Real-Time Ionospheric Data
 
-Runs the IONORT-style ray tracing homing algorithm and displays results
-in the three-panel visualization dashboard:
-- Altitude vs Ground Range
-- 3D Geographic View
-- Synthetic Oblique Ionogram
+Runs the IONORT-style ray tracing homing algorithm with LIVE ionospheric data
+from the GIRO ionosonde network and NOAA space weather services.
+
+Features:
+- Real-time foF2/hmF2 from nearest ionosonde stations
+- Space weather monitoring (X-ray flux, Kp index)
+- Automatic ionosphere model updates
+- Three-panel visualization dashboard
 
 Usage:
-    python scripts/ionort_live_demo.py [--tx LAT,LON] [--rx LAT,LON] [--freq MIN,MAX]
+    python scripts/ionort_live_demo.py [--tx LAT,LON] [--rx LAT,LON] [--live]
 
 Examples:
-    # Default: Boulder, CO to Albuquerque, NM
-    python scripts/ionort_live_demo.py
+    # Default with live data
+    python scripts/ionort_live_demo.py --live
 
     # Custom path: New York to Washington DC
-    python scripts/ionort_live_demo.py --tx 40.7,-74.0 --rx 38.9,-77.0
+    python scripts/ionort_live_demo.py --tx 40.7,-74.0 --rx 38.9,-77.0 --live
 
     # NVIS mode (short range, high elevation)
-    python scripts/ionort_live_demo.py --tx 40.0,-105.0 --rx 40.5,-104.5 --nvis
+    python scripts/ionort_live_demo.py --tx 40.0,-105.0 --rx 40.5,-104.5 --nvis --live
 
-    # Custom frequency range
-    python scripts/ionort_live_demo.py --freq 5,12
+    # Simulated live data (for testing without network)
+    python scripts/ionort_live_demo.py --live --simulated
 """
 
 import sys
 import os
 import argparse
 import logging
+import multiprocessing
 from datetime import datetime, timezone
+from typing import Optional
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -38,7 +43,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QLineEdit, QGroupBox, QProgressBar,
     QStatusBar, QMessageBox, QComboBox, QSpinBox, QDoubleSpinBox,
-    QCheckBox, QSplitter, QFrame
+    QCheckBox, QSplitter, QFrame, QScrollArea, QTextEdit
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
@@ -54,6 +59,14 @@ from src.raytracer import (
 )
 from src.visualization.pyqt.raytracer import IONORTVisualizationPanel
 
+# Import live data client
+try:
+    from src.ingestion.live_iono_client import LiveIonoClient, LiveIonosphericState
+    HAS_LIVE_CLIENT = True
+except ImportError as e:
+    HAS_LIVE_CLIENT = False
+    print(f"Warning: Live data client not available: {e}")
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -63,6 +76,7 @@ class HomingWorker(QThread):
 
     progress = pyqtSignal(int, int)  # rays_done, total_rays
     finished = pyqtSignal(object)    # HomingResult
+    cancelled = pyqtSignal()         # emitted when cancelled
     error = pyqtSignal(str)          # error message
 
     def __init__(
@@ -83,43 +97,200 @@ class HomingWorker(QThread):
         self.search_space = search_space
         self.config = config
         self.integrator_name = integrator_name
+        self._homing: Optional[HomingAlgorithm] = None
+
+    def cancel(self):
+        """Cancel the running homing algorithm."""
+        if self._homing:
+            self._homing.cancel()
+            self._homing.cleanup()
+            logger.info("Homing worker: cancellation requested")
 
     def run(self):
-        print("DEBUG: HomingWorker.run() started")
         try:
             # Create solver with selected integrator
-            print(f"DEBUG: Creating solver with integrator: {self.integrator_name}")
             solver = HaselgroveSolver(
                 self.ionosphere,
                 integrator_name=self.integrator_name
             )
-            print("DEBUG: Solver created")
 
             # Create homing algorithm
-            homing = HomingAlgorithm(solver, self.config)
+            self._homing = HomingAlgorithm(solver, self.config)
 
             # Run homing with progress callback
             def progress_cb(done, total):
                 self.progress.emit(done, total)
 
-            result = homing.find_paths(
+            result = self._homing.find_paths(
                 self.tx_lat, self.tx_lon,
                 self.rx_lat, self.rx_lon,
                 search_space=self.search_space,
                 progress_callback=progress_cb,
             )
 
-            self.finished.emit(result)
+            # Check if cancelled
+            if self._homing.is_cancelled():
+                self.cancelled.emit()
+            else:
+                # Diagnostic info about paths - use print for immediate visibility
+                paths_with_data = sum(1 for w in result.winner_triplets
+                                      if w.ray_path and w.ray_path.states)
+                print(f"\n{'='*60}")
+                print(f"HOMING RESULT DIAGNOSTICS:")
+                print(f"  Winners: {result.num_winners}")
+                print(f"  Paths with data: {paths_with_data}")
+                print(f"  store_ray_paths: {self.config.store_ray_paths}")
+                print(f"  use_multiprocessing: {self.config.use_multiprocessing}")
+                if result.winner_triplets:
+                    # Show first few winners
+                    print(f"  First 5 winners:")
+                    for w in result.winner_triplets[:5]:
+                        has_path = "YES" if (w.ray_path and w.ray_path.states) else "NO"
+                        print(f"    {w.frequency_mhz:.1f} MHz, {w.elevation_deg:.0f}°, path={has_path}")
+                print(f"{'='*60}\n", flush=True)
+                self.finished.emit(result)
 
         except Exception as e:
             logger.exception("Homing failed")
             self.error.emit(str(e))
 
 
+class LiveDataPanel(QWidget):
+    """Panel showing live ionospheric data status."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        # Status indicator
+        status_row = QHBoxLayout()
+        self.status_indicator = QLabel("OFFLINE")
+        self.status_indicator.setStyleSheet("""
+            QLabel {
+                background-color: #aa3333;
+                color: white;
+                font-weight: bold;
+                padding: 2px 8px;
+                border-radius: 3px;
+            }
+        """)
+        status_row.addWidget(self.status_indicator)
+        status_row.addStretch()
+        layout.addLayout(status_row)
+
+        # Data source
+        self.source_label = QLabel("Source: --")
+        self.source_label.setStyleSheet("color: #aaaaaa;")
+        layout.addWidget(self.source_label)
+
+        # Ionospheric parameters
+        params_layout = QHBoxLayout()
+
+        self.fof2_label = QLabel("foF2: --")
+        self.fof2_label.setStyleSheet("color: #44ff44;")
+        params_layout.addWidget(self.fof2_label)
+
+        self.hmf2_label = QLabel("hmF2: --")
+        self.hmf2_label.setStyleSheet("color: #44ff44;")
+        params_layout.addWidget(self.hmf2_label)
+
+        layout.addLayout(params_layout)
+
+        # Space weather
+        wx_layout = QHBoxLayout()
+
+        self.kp_label = QLabel("Kp: --")
+        self.kp_label.setStyleSheet("color: #ffaa44;")
+        wx_layout.addWidget(self.kp_label)
+
+        self.xray_label = QLabel("R: --")
+        self.xray_label.setStyleSheet("color: #ffaa44;")
+        wx_layout.addWidget(self.xray_label)
+
+        layout.addLayout(wx_layout)
+
+        # Data age and confidence
+        self.age_label = QLabel("Age: --")
+        self.age_label.setStyleSheet("color: #888888; font-size: 10px;")
+        layout.addWidget(self.age_label)
+
+    def set_online(self, is_online: bool):
+        """Update online/offline status."""
+        if is_online:
+            self.status_indicator.setText("LIVE")
+            self.status_indicator.setStyleSheet("""
+                QLabel {
+                    background-color: #33aa33;
+                    color: white;
+                    font-weight: bold;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                }
+            """)
+        else:
+            self.status_indicator.setText("OFFLINE")
+            self.status_indicator.setStyleSheet("""
+                QLabel {
+                    background-color: #aa3333;
+                    color: white;
+                    font-weight: bold;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                }
+            """)
+
+    def update_state(self, state: 'LiveIonosphericState'):
+        """Update display from live state."""
+        self.set_online(True)
+
+        # Source
+        source = state.source_station or "Default"
+        if state.source_distance_km > 0:
+            source += f" ({state.source_distance_km:.0f} km)"
+        self.source_label.setText(f"Source: {source}")
+
+        # Ionospheric parameters
+        self.fof2_label.setText(f"foF2: {state.foF2:.2f} MHz")
+        self.hmf2_label.setText(f"hmF2: {state.hmF2:.0f} km")
+
+        # Space weather
+        self.kp_label.setText(f"Kp: {state.kp_index:.1f}")
+        r_text = f"R{state.r_scale}" if state.r_scale > 0 else "R0"
+        self.xray_label.setText(r_text)
+
+        # Confidence color
+        if state.overall_confidence >= 0.7:
+            color = "#44ff44"  # Green
+        elif state.overall_confidence >= 0.4:
+            color = "#ffaa44"  # Orange
+        else:
+            color = "#ff4444"  # Red
+
+        self.fof2_label.setStyleSheet(f"color: {color};")
+        self.hmf2_label.setStyleSheet(f"color: {color};")
+
+        # Age
+        if state.data_age_seconds < 60:
+            age_text = f"Age: {state.data_age_seconds:.0f}s"
+        elif state.data_age_seconds < 3600:
+            age_text = f"Age: {state.data_age_seconds/60:.0f}m"
+        else:
+            age_text = f"Age: {state.data_age_seconds/3600:.1f}h"
+        age_text += f" | Conf: {state.overall_confidence:.0%}"
+        self.age_label.setText(age_text)
+
+
 class ControlPanel(QWidget):
     """Control panel for configuring and running homing."""
 
     run_requested = pyqtSignal()
+    live_data_toggled = pyqtSignal(bool)
+    location_changed = pyqtSignal(float, float, float, float)  # tx_lat, tx_lon, rx_lat, rx_lon
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -128,11 +299,43 @@ class ControlPanel(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
 
         # Title
         title = QLabel("IONORT Ray Tracing Control")
         title.setStyleSheet("font-weight: bold; font-size: 16px; color: #ffffff;")
         layout.addWidget(title)
+
+        # Live Data Section
+        live_group = QGroupBox("Live Ionospheric Data")
+        live_group.setStyleSheet("QGroupBox { color: #ffffff; }")
+        live_layout = QVBoxLayout(live_group)
+
+        # Enable checkbox
+        enable_row = QHBoxLayout()
+        self.live_enabled = QCheckBox("Enable Live Data")
+        self.live_enabled.setStyleSheet("color: #ffffff;")
+        self.live_enabled.toggled.connect(self._on_live_toggled)
+        enable_row.addWidget(self.live_enabled)
+
+        self.simulated_mode = QCheckBox("Simulated")
+        self.simulated_mode.setStyleSheet("color: #888888;")
+        self.simulated_mode.setToolTip("Use simulated data (for testing without network)")
+        enable_row.addWidget(self.simulated_mode)
+
+        live_layout.addLayout(enable_row)
+
+        # Live data status panel
+        self.live_panel = LiveDataPanel()
+        live_layout.addWidget(self.live_panel)
+
+        # Auto-apply checkbox
+        self.auto_apply = QCheckBox("Auto-apply to model")
+        self.auto_apply.setChecked(True)
+        self.auto_apply.setStyleSheet("color: #aaaaaa; font-size: 10px;")
+        live_layout.addWidget(self.auto_apply)
+
+        layout.addWidget(live_group)
 
         # Transmitter group
         tx_group = QGroupBox("Transmitter")
@@ -144,6 +347,7 @@ class ControlPanel(QWidget):
         self.tx_lat.setRange(-90, 90)
         self.tx_lat.setValue(40.0)
         self.tx_lat.setDecimals(2)
+        self.tx_lat.valueChanged.connect(self._on_location_changed)
         tx_layout.addWidget(self.tx_lat)
 
         tx_layout.addWidget(QLabel("Lon:"))
@@ -151,6 +355,7 @@ class ControlPanel(QWidget):
         self.tx_lon.setRange(-180, 180)
         self.tx_lon.setValue(-105.0)
         self.tx_lon.setDecimals(2)
+        self.tx_lon.valueChanged.connect(self._on_location_changed)
         tx_layout.addWidget(self.tx_lon)
 
         layout.addWidget(tx_group)
@@ -165,6 +370,7 @@ class ControlPanel(QWidget):
         self.rx_lat.setRange(-90, 90)
         self.rx_lat.setValue(35.0)
         self.rx_lat.setDecimals(2)
+        self.rx_lat.valueChanged.connect(self._on_location_changed)
         rx_layout.addWidget(self.rx_lat)
 
         rx_layout.addWidget(QLabel("Lon:"))
@@ -172,6 +378,7 @@ class ControlPanel(QWidget):
         self.rx_lon.setRange(-180, 180)
         self.rx_lon.setValue(-106.0)
         self.rx_lon.setDecimals(2)
+        self.rx_lon.valueChanged.connect(self._on_location_changed)
         rx_layout.addWidget(self.rx_lon)
 
         layout.addWidget(rx_group)
@@ -198,7 +405,7 @@ class ControlPanel(QWidget):
         freq_layout.addWidget(QLabel("Step:"))
         self.freq_step = QDoubleSpinBox()
         self.freq_step.setRange(0.1, 5)
-        self.freq_step.setValue(1.0)  # Larger step for faster demo
+        self.freq_step.setValue(1.0)
         self.freq_step.setDecimals(1)
         freq_layout.addWidget(self.freq_step)
 
@@ -226,7 +433,7 @@ class ControlPanel(QWidget):
         elev_layout.addWidget(QLabel("Step:"))
         self.elev_step = QDoubleSpinBox()
         self.elev_step.setRange(1, 20)
-        self.elev_step.setValue(10.0)  # Larger step for faster demo
+        self.elev_step.setValue(10.0)
         self.elev_step.setDecimals(0)
         elev_layout.addWidget(self.elev_step)
 
@@ -247,18 +454,23 @@ class ControlPanel(QWidget):
         int_layout.addStretch()
         opts_layout.addLayout(int_layout)
 
-        # Options row
-        opt_row = QHBoxLayout()
+        # Options row 1
+        opt_row1 = QHBoxLayout()
         self.trace_both_modes = QCheckBox("Both modes (O+X)")
         self.trace_both_modes.setChecked(True)
         self.trace_both_modes.setStyleSheet("color: #ffffff;")
-        opt_row.addWidget(self.trace_both_modes)
+        opt_row1.addWidget(self.trace_both_modes)
+        opt_row1.addStretch()
+        opts_layout.addLayout(opt_row1)
 
-        self.store_paths = QCheckBox("Store ray paths")
+        # Options row 2 - ray path storage (required for visualization)
+        opt_row2 = QHBoxLayout()
+        self.store_paths = QCheckBox("Store ray paths (required for visualization)")
         self.store_paths.setChecked(True)
-        self.store_paths.setStyleSheet("color: #ffffff;")
-        opt_row.addWidget(self.store_paths)
-        opts_layout.addLayout(opt_row)
+        self.store_paths.setStyleSheet("color: #ffff44; font-weight: bold;")
+        opt_row2.addWidget(self.store_paths)
+        opt_row2.addStretch()
+        opts_layout.addLayout(opt_row2)
 
         # Workers
         workers_layout = QHBoxLayout()
@@ -272,8 +484,57 @@ class ControlPanel(QWidget):
 
         layout.addWidget(opts_group)
 
-        # Ionosphere parameters
-        iono_group = QGroupBox("Ionosphere Model")
+        # Radio Configuration (for link budget / SNR calculation)
+        radio_group = QGroupBox("Radio Configuration (Link Budget)")
+        radio_group.setStyleSheet("QGroupBox { color: #ffffff; }")
+        radio_layout = QVBoxLayout(radio_group)
+
+        # TX Power
+        tx_power_row = QHBoxLayout()
+        tx_power_row.addWidget(QLabel("TX Power (W):"))
+        self.tx_power = QDoubleSpinBox()
+        self.tx_power.setRange(1, 1500)
+        self.tx_power.setValue(100.0)
+        self.tx_power.setDecimals(0)
+        self.tx_power.setToolTip("Transmitter power in watts")
+        tx_power_row.addWidget(self.tx_power)
+        tx_power_row.addStretch()
+        radio_layout.addLayout(tx_power_row)
+
+        # Antenna gains
+        antenna_row = QHBoxLayout()
+        antenna_row.addWidget(QLabel("TX Ant (dBi):"))
+        self.tx_antenna_gain = QDoubleSpinBox()
+        self.tx_antenna_gain.setRange(-10, 20)
+        self.tx_antenna_gain.setValue(0.0)
+        self.tx_antenna_gain.setDecimals(1)
+        self.tx_antenna_gain.setToolTip("TX antenna gain (0=isotropic)")
+        antenna_row.addWidget(self.tx_antenna_gain)
+
+        antenna_row.addWidget(QLabel("RX Ant (dBi):"))
+        self.rx_antenna_gain = QDoubleSpinBox()
+        self.rx_antenna_gain.setRange(-10, 20)
+        self.rx_antenna_gain.setValue(0.0)
+        self.rx_antenna_gain.setDecimals(1)
+        self.rx_antenna_gain.setToolTip("RX antenna gain (0=isotropic)")
+        antenna_row.addWidget(self.rx_antenna_gain)
+        radio_layout.addLayout(antenna_row)
+
+        # RX bandwidth
+        bw_row = QHBoxLayout()
+        bw_row.addWidget(QLabel("RX BW (Hz):"))
+        self.rx_bandwidth = QComboBox()
+        self.rx_bandwidth.addItems(["500", "2400", "3000", "6000"])
+        self.rx_bandwidth.setCurrentText("3000")
+        self.rx_bandwidth.setToolTip("Receiver bandwidth (500=CW, 3000=SSB)")
+        bw_row.addWidget(self.rx_bandwidth)
+        bw_row.addStretch()
+        radio_layout.addLayout(bw_row)
+
+        layout.addWidget(radio_group)
+
+        # Ionosphere parameters (manual override)
+        iono_group = QGroupBox("Ionosphere Model (Manual Override)")
         iono_group.setStyleSheet("QGroupBox { color: #ffffff; }")
         iono_layout = QVBoxLayout(iono_group)
 
@@ -293,6 +554,11 @@ class ControlPanel(QWidget):
         row1.addWidget(self.hmF2)
         iono_layout.addLayout(row1)
 
+        # Note about live data override
+        self.override_note = QLabel("(Using manual values - enable Live Data for real-time)")
+        self.override_note.setStyleSheet("color: #888888; font-size: 10px;")
+        iono_layout.addWidget(self.override_note)
+
         layout.addWidget(iono_group)
 
         # Progress bar
@@ -301,8 +567,10 @@ class ControlPanel(QWidget):
         self.progress.setValue(0)
         layout.addWidget(self.progress)
 
-        # Run button
-        self.run_btn = QPushButton("Run Homing Algorithm")
+        # Run/Cancel buttons in a row
+        btn_row = QHBoxLayout()
+
+        self.run_btn = QPushButton("Run Homing")
         self.run_btn.setStyleSheet("""
             QPushButton {
                 background-color: #4488ff;
@@ -319,14 +587,29 @@ class ControlPanel(QWidget):
             }
         """)
         self.run_btn.clicked.connect(self._on_run_clicked)
-        layout.addWidget(self.run_btn)
+        btn_row.addWidget(self.run_btn)
 
-    def _on_run_clicked(self):
-        """Handle run button click with debug output."""
-        print("DEBUG: Run button clicked!")
-        self.status_label.setText("Button clicked - emitting signal...")
-        self.status_label.setStyleSheet("color: #ffaa00;")
-        self.run_requested.emit()
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #cc4444;
+                color: white;
+                font-weight: bold;
+                padding: 10px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #dd5555;
+            }
+            QPushButton:disabled {
+                background-color: #666666;
+            }
+        """)
+        self.cancel_btn.setEnabled(False)
+        self.cancel_btn.clicked.connect(self._on_cancel_clicked)
+        btn_row.addWidget(self.cancel_btn)
+
+        layout.addLayout(btn_row)
 
         # Status
         self.status_label = QLabel("Ready")
@@ -341,18 +624,64 @@ class ControlPanel(QWidget):
 
         layout.addStretch()
 
+    cancel_requested = pyqtSignal()
+
+    def _on_run_clicked(self):
+        """Handle run button click."""
+        self.run_requested.emit()
+
+    def _on_cancel_clicked(self):
+        """Handle cancel button click."""
+        self.cancel_requested.emit()
+
+    def _on_live_toggled(self, enabled: bool):
+        """Handle live data toggle."""
+        if enabled:
+            self.override_note.setText("(Using LIVE data - manual values ignored)")
+            self.override_note.setStyleSheet("color: #44ff44; font-size: 10px;")
+            self.foF2.setEnabled(False)
+            self.hmF2.setEnabled(False)
+        else:
+            self.override_note.setText("(Using manual values - enable Live Data for real-time)")
+            self.override_note.setStyleSheet("color: #888888; font-size: 10px;")
+            self.foF2.setEnabled(True)
+            self.hmF2.setEnabled(True)
+
+        self.live_data_toggled.emit(enabled)
+
+    def _on_location_changed(self):
+        """Handle location change for live data reference point update."""
+        self.location_changed.emit(
+            self.tx_lat.value(),
+            self.tx_lon.value(),
+            self.rx_lat.value(),
+            self.rx_lon.value()
+        )
+
+    def update_from_live_state(self, state: 'LiveIonosphericState'):
+        """Update UI from live ionospheric state."""
+        self.live_panel.update_state(state)
+
+        # Update ionosphere values if auto-apply is enabled
+        if self.auto_apply.isChecked() and self.live_enabled.isChecked():
+            # Block signals to avoid feedback loop
+            self.foF2.blockSignals(True)
+            self.hmF2.blockSignals(True)
+            self.foF2.setValue(state.foF2)
+            self.hmF2.setValue(state.hmF2)
+            self.foF2.blockSignals(False)
+            self.hmF2.blockSignals(False)
+
     def get_search_space(self) -> HomingSearchSpace:
         """Get search space from UI values."""
-        space = HomingSearchSpace(
+        return HomingSearchSpace(
             freq_range=(self.freq_min.value(), self.freq_max.value()),
             freq_step=self.freq_step.value(),
             elevation_range=(self.elev_min.value(), self.elev_max.value()),
             elevation_step=self.elev_step.value(),
-            azimuth_deviation_range=(-5.0, 5.0),  # Smaller range for speed
+            azimuth_deviation_range=(-5.0, 5.0),
             azimuth_step=5.0,
         )
-        print(f"DEBUG: Search space has {space.total_triplets} triplets")
-        return space
 
     def get_config(self) -> HomingConfig:
         """Get homing config from UI values."""
@@ -376,6 +705,7 @@ class ControlPanel(QWidget):
     def set_running(self, running: bool):
         """Set UI state for running/stopped."""
         self.run_btn.setEnabled(not running)
+        self.cancel_btn.setEnabled(running)
         if running:
             self.status_label.setText("Running homing algorithm...")
             self.status_label.setStyleSheet("color: #ffaa00;")
@@ -393,26 +723,94 @@ class ControlPanel(QWidget):
     def show_result(self, result: HomingResult):
         """Display result summary."""
         self.progress.setValue(100)
-        self.status_label.setText("Complete")
-        self.status_label.setStyleSheet("color: #44ff44;")
 
-        text = (
-            f"Range: {result.great_circle_range_km:.0f} km\n"
-            f"Winners: {result.num_winners} "
-            f"(O: {len(result.o_mode_winners)}, X: {len(result.x_mode_winners)})\n"
-            f"MUF: {result.muf:.1f} MHz, LUF: {result.luf:.1f} MHz, FOT: {result.fot:.1f} MHz\n"
-            f"Rays traced: {result.total_rays_traced}\n"
-            f"Time: {result.computation_time_s:.1f}s"
-        )
+        if result.num_winners == 0:
+            # FAILURE - no paths found
+            self.status_label.setText("NO PATHS FOUND")
+            self.status_label.setStyleSheet("""
+                color: #ffffff;
+                background-color: #cc3333;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-weight: bold;
+            """)
+            text = (
+                f"*** NO PROPAGATION PATHS FOUND ***\n\n"
+                f"Range: {result.great_circle_range_km:.0f} km\n"
+                f"Rays traced: {result.total_rays_traced}\n"
+                f"Time: {result.computation_time_s:.1f}s\n\n"
+                f"Possible causes:\n"
+                f"- Frequency too high for ionosphere (try lower freq)\n"
+                f"- foF2 too low (check live data or increase)\n"
+                f"- Path too long for max hops setting\n"
+                f"- Tolerance too tight (increase distance_tolerance)"
+            )
+        else:
+            # SUCCESS
+            self.status_label.setText("Complete")
+            self.status_label.setStyleSheet("color: #44ff44;")
+
+            # Count multi-hop winners
+            single_hop = sum(1 for w in result.winner_triplets if w.hop_count <= 1)
+            multi_hop = sum(1 for w in result.winner_triplets if w.hop_count > 1)
+            max_hops = max((w.hop_count for w in result.winner_triplets), default=0)
+
+            hop_info = f"Hops: 1-hop={single_hop}"
+            if multi_hop > 0:
+                hop_info += f", multi-hop={multi_hop} (max {max_hops})"
+
+            # SNR statistics
+            snr_values = [w.snr_db for w in result.winner_triplets if w.snr_db is not None]
+            if snr_values:
+                best_snr = max(snr_values)
+                avg_snr = sum(snr_values) / len(snr_values)
+                # Find best winner for details
+                best_winner = max(
+                    (w for w in result.winner_triplets if w.snr_db is not None),
+                    key=lambda w: w.snr_db
+                )
+                snr_info = (
+                    f"\n--- Link Budget ---\n"
+                    f"Best SNR: {best_snr:.0f} dB @ {best_winner.frequency_mhz:.1f} MHz\n"
+                    f"Signal: {best_winner.signal_strength_dbm:.0f} dBm, "
+                    f"Loss: {best_winner.path_loss_db:.0f} dB\n"
+                    f"Avg SNR: {avg_snr:.0f} dB"
+                )
+            else:
+                snr_info = ""
+
+            # Count paths with visualization data
+            paths_with_viz = sum(1 for w in result.winner_triplets if w.ray_path and w.ray_path.states)
+            paths_without_viz = result.num_winners - paths_with_viz
+            viz_info = f"Paths visualized: {paths_with_viz}/{result.num_winners}"
+            if paths_without_viz > 0:
+                viz_info += f" ({paths_without_viz} missing)"
+
+            text = (
+                f"Range: {result.great_circle_range_km:.0f} km\n"
+                f"Winners: {result.num_winners} "
+                f"(O: {len(result.o_mode_winners)}, X: {len(result.x_mode_winners)})\n"
+                f"{hop_info}\n"
+                f"MUF: {result.muf:.1f} MHz, LUF: {result.luf:.1f} MHz, FOT: {result.fot:.1f} MHz\n"
+                f"{viz_info}\n"
+                f"Rays traced: {result.total_rays_traced}\n"
+                f"Time: {result.computation_time_s:.1f}s"
+                f"{snr_info}"
+            )
+
         self.results_label.setText(text)
 
 
 class IONORTLiveWindow(QMainWindow):
-    """Main window for IONORT live demo."""
+    """Main window for IONORT live demo with real-time data."""
 
-    def __init__(self):
+    def __init__(self, use_live: bool = False, use_simulated: bool = False):
         super().__init__()
         self.worker = None
+        self.live_client: Optional[LiveIonoClient] = None
+        self.use_live = use_live
+        self.use_simulated = use_simulated
+        self.step_km = 1.0  # Default integration step, can be overridden
         self._setup_ui()
 
     def _setup_ui(self):
@@ -450,6 +848,9 @@ class IONORTLiveWindow(QMainWindow):
             QProgressBar::chunk {
                 background-color: #4488ff;
             }
+            QScrollArea {
+                border: none;
+            }
         """)
 
         # Central widget
@@ -462,30 +863,143 @@ class IONORTLiveWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Control panel (left)
+        # Control panel in scroll area (left)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
         self.control_panel = ControlPanel()
-        self.control_panel.setMaximumWidth(350)
+        self.control_panel.setMinimumWidth(320)
+        self.control_panel.setMaximumWidth(400)
         self.control_panel.run_requested.connect(self._run_homing)
-        splitter.addWidget(self.control_panel)
+        self.control_panel.cancel_requested.connect(self._cancel_homing)
+        self.control_panel.live_data_toggled.connect(self._on_live_data_toggled)
+        self.control_panel.location_changed.connect(self._on_location_changed)
+
+        scroll.setWidget(self.control_panel)
+        splitter.addWidget(scroll)
 
         # Visualization panel (right)
         self.viz_panel = IONORTVisualizationPanel()
         splitter.addWidget(self.viz_panel)
 
-        # Set splitter sizes (control: 300px, viz: rest)
-        splitter.setSizes([300, 1300])
+        # Set splitter sizes (control: 350px, viz: rest)
+        splitter.setSizes([350, 1250])
 
-        layout.addWidget(splitter)
+        # Vertical splitter for main content + log console
+        vsplitter = QSplitter(Qt.Orientation.Vertical)
+        vsplitter.addWidget(splitter)
+
+        # Log console at bottom
+        log_group = QGroupBox("Diagnostic Console (copyable)")
+        log_group.setStyleSheet("QGroupBox { color: #ffffff; }")
+        log_layout = QVBoxLayout(log_group)
+        self.log_console = QTextEdit()
+        self.log_console.setReadOnly(True)
+        self.log_console.setStyleSheet("""
+            QTextEdit {
+                background-color: #0a0a0a;
+                color: #00ff00;
+                font-family: monospace;
+                font-size: 11px;
+            }
+        """)
+        self.log_console.setMaximumHeight(150)
+        log_layout.addWidget(self.log_console)
+        vsplitter.addWidget(log_group)
+
+        vsplitter.setSizes([850, 150])
+        layout.addWidget(vsplitter)
 
         # Status bar
         self.statusBar().showMessage("Ready - Configure parameters and click Run")
 
+        # Initialize live data if requested
+        if self.use_live:
+            self.control_panel.live_enabled.setChecked(True)
+            self.control_panel.simulated_mode.setChecked(self.use_simulated)
+
+    def _init_live_client(self):
+        """Initialize live data client."""
+        if not HAS_LIVE_CLIENT:
+            QMessageBox.warning(
+                self, "Live Data Unavailable",
+                "Live data client not available. Using manual mode."
+            )
+            self.control_panel.live_enabled.setChecked(False)
+            return
+
+        # Calculate midpoint for reference location
+        mid_lat = (self.control_panel.tx_lat.value() + self.control_panel.rx_lat.value()) / 2
+        mid_lon = (self.control_panel.tx_lon.value() + self.control_panel.rx_lon.value()) / 2
+
+        self.live_client = LiveIonoClient(
+            reference_lat=mid_lat,
+            reference_lon=mid_lon,
+            update_interval_ms=60000,  # 1 minute updates
+            use_simulated=self.control_panel.simulated_mode.isChecked(),
+        )
+
+        # Connect signals
+        self.live_client.state_updated.connect(self._on_live_state_update)
+        self.live_client.connected.connect(self._on_live_connected)
+        self.live_client.disconnected.connect(self._on_live_disconnected)
+        self.live_client.error.connect(self._on_live_error)
+
+        self.live_client.start()
+        logger.info("Live data client started")
+
+    def _stop_live_client(self):
+        """Stop live data client."""
+        if self.live_client:
+            self.live_client.stop()
+            self.live_client = None
+            logger.info("Live data client stopped")
+
+    def _on_live_data_toggled(self, enabled: bool):
+        """Handle live data toggle."""
+        if enabled:
+            self._init_live_client()
+        else:
+            self._stop_live_client()
+            self.control_panel.live_panel.set_online(False)
+
+    def _on_location_changed(self, tx_lat: float, tx_lon: float, rx_lat: float, rx_lon: float):
+        """Handle location change - update live client reference point."""
+        if self.live_client:
+            mid_lat = (tx_lat + rx_lat) / 2
+            mid_lon = (tx_lon + rx_lon) / 2
+            self.live_client.set_reference_location(mid_lat, mid_lon)
+
+    def _on_live_state_update(self, state: 'LiveIonosphericState'):
+        """Handle live state update."""
+        self.control_panel.update_from_live_state(state)
+
+        # Update status bar with live data info
+        source = state.source_station or "Default"
+        self.statusBar().showMessage(
+            f"Live Data: foF2={state.foF2:.2f} MHz, hmF2={state.hmF2:.0f} km "
+            f"(from {source}, Kp={state.kp_index:.1f})"
+        )
+
+    def _on_live_connected(self):
+        """Handle live client connected."""
+        logger.info("Live data client connected")
+        self.control_panel.live_panel.set_online(True)
+
+    def _on_live_disconnected(self):
+        """Handle live client disconnected."""
+        logger.info("Live data client disconnected")
+        self.control_panel.live_panel.set_online(False)
+
+    def _on_live_error(self, error_msg: str):
+        """Handle live client error."""
+        logger.warning(f"Live data error: {error_msg}")
+        self.statusBar().showMessage(f"Live data error: {error_msg}")
+
     def _run_homing(self):
         """Start homing algorithm in background thread."""
-        print("DEBUG: _run_homing called!")
-
         if self.worker is not None and self.worker.isRunning():
-            print("DEBUG: Worker already running")
             QMessageBox.warning(self, "Busy", "Homing already running")
             return
 
@@ -493,6 +1007,14 @@ class IONORTLiveWindow(QMainWindow):
         search_space = self.control_panel.get_search_space()
         config = self.control_panel.get_config()
         ionosphere = self.control_panel.get_ionosphere()
+
+        # Apply runtime params from command line (stored in window)
+        if hasattr(self, 'step_km'):
+            config.step_km = self.step_km
+        if hasattr(self, 'max_hops'):
+            config.max_hops = self.max_hops
+        if hasattr(self, 'tolerance_km'):
+            config.distance_tolerance_km = self.tolerance_km
 
         tx_lat = self.control_panel.tx_lat.value()
         tx_lon = self.control_panel.tx_lon.value()
@@ -503,7 +1025,9 @@ class IONORTLiveWindow(QMainWindow):
         # Log
         logger.info(f"Starting homing: ({tx_lat}, {tx_lon}) -> ({rx_lat}, {rx_lon})")
         logger.info(f"Search space: {search_space.total_triplets} triplets")
-        logger.info(f"Integrator: {integrator}")
+        logger.info(f"Integrator: {integrator}, step_km: {config.step_km}, workers: {config.max_workers}")
+        logger.info(f"Ionosphere: foF2={self.control_panel.foF2.value():.2f} MHz, "
+                   f"hmF2={self.control_panel.hmF2.value():.0f} km")
 
         # Update UI
         self.control_panel.set_running(True)
@@ -521,27 +1045,149 @@ class IONORTLiveWindow(QMainWindow):
         )
         self.worker.progress.connect(self._on_progress)
         self.worker.finished.connect(self._on_finished)
+        self.worker.cancelled.connect(self._on_cancelled)
         self.worker.error.connect(self._on_error)
         self.worker.start()
+
+    def _cancel_homing(self):
+        """Cancel running homing algorithm."""
+        if self.worker and self.worker.isRunning():
+            logger.info("Cancelling homing algorithm...")
+            self.statusBar().showMessage("Cancelling...")
+            self.worker.cancel()
 
     def _on_progress(self, done: int, total: int):
         """Handle progress update."""
         self.control_panel.set_progress(done, total)
 
+    def log(self, text: str):
+        """Write to the diagnostic console."""
+        self.log_console.append(text)
+        # Also print to terminal
+        print(text, flush=True)
+
     def _on_finished(self, result: HomingResult):
         """Handle homing completion."""
         self.control_panel.set_running(False)
+
+        # Calculate SNR for winners FIRST
+        if result.num_winners > 0:
+            self._calculate_snr_for_result(result)
+
+        # Log diagnostics to console (now with SNR)
+        paths_with_data = sum(1 for w in result.winner_triplets
+                              if w.ray_path and w.ray_path.states)
+        self.log("=" * 50)
+        self.log(f"HOMING COMPLETE: {result.num_winners} winners, {paths_with_data} with path data")
+        if result.winner_triplets:
+            # Sort by SNR descending
+            sorted_winners = sorted(result.winner_triplets,
+                                   key=lambda w: w.snr_db if w.snr_db else -999,
+                                   reverse=True)
+            for w in sorted_winners[:10]:
+                has_path = "✓" if (w.ray_path and w.ray_path.states) else "✗"
+                snr = f"SNR={w.snr_db:.0f}dB" if w.snr_db else "SNR=?"
+                sig = f"Sig={w.signal_strength_dbm:.0f}dBm" if w.signal_strength_dbm else ""
+                self.log(f"  {w.frequency_mhz:.1f}MHz el={w.elevation_deg:.0f}° {w.mode.value} {snr} {sig} path={has_path}")
+
         self.control_panel.show_result(result)
 
         # Update visualization
         self.viz_panel.update_from_homing_result(result)
 
-        # Status
-        msg = (f"Found {result.num_winners} winner triplets - "
-               f"MUF: {result.muf:.1f} MHz, LUF: {result.luf:.1f} MHz")
+        # Status - show clear failure or success message
+        if result.num_winners == 0:
+            msg = (f"NO PATHS FOUND - {result.total_rays_traced} rays traced, "
+                   f"range {result.great_circle_range_km:.0f} km - "
+                   f"try lower freq or higher foF2")
+            self.statusBar().setStyleSheet("background-color: #883333; color: white;")
+            logger.warning(f"Homing FAILED: no paths found for {result.great_circle_range_km:.0f} km range")
+        else:
+            # Include SNR info in status
+            best_snr = max((w.snr_db for w in result.winner_triplets if w.snr_db is not None), default=None)
+            snr_info = f", Best SNR: {best_snr:.0f} dB" if best_snr is not None else ""
+            msg = (f"Found {result.num_winners} winner triplets - "
+                   f"MUF: {result.muf:.1f} MHz, LUF: {result.luf:.1f} MHz{snr_info}")
+            self.statusBar().setStyleSheet("")  # Reset to default
+            logger.info(f"Homing complete: {result}")
+
         self.statusBar().showMessage(msg)
 
-        logger.info(f"Homing complete: {result}")
+    def _calculate_snr_for_result(self, result: HomingResult):
+        """Calculate SNR for all winners using link budget calculator."""
+        from src.raytracer.link_budget import (
+            LinkBudgetCalculator,
+            TransmitterConfig,
+            ReceiverConfig,
+            AntennaConfig,
+            NoiseEnvironment,
+            calculate_solar_zenith_angle,
+            is_nighttime,
+        )
+
+        # Get radio config from UI
+        tx_power = self.control_panel.tx_power.value()
+        tx_gain = self.control_panel.tx_antenna_gain.value()
+        rx_gain = self.control_panel.rx_antenna_gain.value()
+        rx_bw = float(self.control_panel.rx_bandwidth.currentText())
+
+        # Get space weather from live data (if available)
+        xray_flux = 1e-6  # Default quiet sun
+        kp_index = 2.0    # Default quiet
+        if self.live_client and hasattr(self.live_client, 'state'):
+            xray_flux = getattr(self.live_client.state, 'xray_flux', 1e-6)
+            kp_index = getattr(self.live_client.state, 'kp_index', 2.0)
+
+        # Calculate midpoint for solar position
+        mid_lat = (result.tx_position[0] + result.rx_position[0]) / 2
+        mid_lon = (result.tx_position[1] + result.rx_position[1]) / 2
+
+        try:
+            is_night = is_nighttime(mid_lat, mid_lon)
+        except Exception:
+            is_night = False
+
+        calc = LinkBudgetCalculator()
+
+        tx_config = TransmitterConfig(
+            power_watts=tx_power,
+            antenna=AntennaConfig(gain_dbi=tx_gain),
+        )
+        rx_config = ReceiverConfig(
+            antenna=AntennaConfig(gain_dbi=rx_gain),
+            bandwidth_hz=rx_bw,
+            noise_environment=NoiseEnvironment.RURAL,
+        )
+
+        try:
+            solar_zenith = calculate_solar_zenith_angle(mid_lat, mid_lon)
+        except Exception:
+            solar_zenith = 45.0
+
+        for winner in result.winner_triplets:
+            try:
+                link_result = calc.calculate_for_winner(
+                    winner,
+                    tx_config=tx_config,
+                    rx_config=rx_config,
+                    xray_flux=xray_flux,
+                    kp_index=kp_index,
+                    solar_zenith_angle_deg=solar_zenith,
+                    is_night=is_night,
+                    latitude_deg=mid_lat,
+                )
+                winner.snr_db = link_result.snr_db
+                winner.signal_strength_dbm = link_result.signal_power_dbw + 30
+                winner.path_loss_db = link_result.total_path_loss_db
+            except Exception as e:
+                logger.debug(f"SNR calc failed: {e}")
+
+    def _on_cancelled(self):
+        """Handle homing cancellation."""
+        self.control_panel.set_running(False)
+        self.control_panel.progress.setValue(0)
+        self.statusBar().showMessage("Homing algorithm cancelled")
+        logger.info("Homing cancelled by user")
 
     def _on_error(self, error_msg: str):
         """Handle homing error."""
@@ -549,11 +1195,66 @@ class IONORTLiveWindow(QMainWindow):
         self.statusBar().showMessage(f"Error: {error_msg}")
         QMessageBox.critical(self, "Homing Error", error_msg)
 
+    def closeEvent(self, event):
+        """Handle window close - ensure all workers are killed."""
+        logger.info("Window closing - cleaning up...")
+
+        # Stop live data client
+        self._stop_live_client()
+
+        # Cancel and cleanup homing worker
+        if self.worker is not None:
+            logger.info("Terminating homing worker...")
+            self.worker.cancel()
+            self.worker.quit()
+            if not self.worker.wait(2000):  # Wait 2 seconds
+                logger.warning("Worker didn't stop, terminating...")
+                self.worker.terminate()
+                self.worker.wait(1000)
+
+        # Gracefully terminate remaining child processes to avoid semaphore leaks
+        import os
+        import time
+        try:
+            import psutil
+            current_pid = os.getpid()
+            current_process = psutil.Process(current_pid)
+            children = current_process.children(recursive=True)
+
+            # First, send SIGTERM to allow graceful cleanup
+            for child in children:
+                try:
+                    logger.info(f"Terminating child process {child.pid}")
+                    child.terminate()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
+            # Wait briefly for graceful shutdown
+            time.sleep(0.5)
+
+            # Kill any remaining processes
+            children = current_process.children(recursive=True)
+            for child in children:
+                try:
+                    if child.is_running():
+                        logger.info(f"Force killing child process {child.pid}")
+                        child.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except ImportError:
+            # psutil not available, try basic approach
+            pass
+        except Exception as e:
+            logger.debug(f"Cleanup error: {e}")
+
+        logger.info("Cleanup complete")
+        super().closeEvent(event)
+
 
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="IONORT Live Ray Tracing Dashboard"
+        description="IONORT Live Ray Tracing Dashboard with Real-Time Data"
     )
     parser.add_argument(
         "--tx", type=str, default="40.0,-105.0",
@@ -573,11 +1274,44 @@ def parse_args():
     )
     parser.add_argument(
         "--foF2", type=float, default=7.0,
-        help="F2 critical frequency MHz (default: 7.0)"
+        help="F2 critical frequency MHz (default: 7.0, ignored if --live)"
     )
     parser.add_argument(
         "--hmF2", type=float, default=300.0,
-        help="F2 peak height km (default: 300)"
+        help="F2 peak height km (default: 300, ignored if --live)"
+    )
+    parser.add_argument(
+        "--live", action="store_true",
+        help="Enable live ionospheric data from GIRO network"
+    )
+    parser.add_argument(
+        "--simulated", action="store_true",
+        help="Use simulated live data (for testing without network)"
+    )
+    # Performance tuning
+    parser.add_argument(
+        "--workers", type=int, default=None,
+        help="Number of parallel workers (default: number of CPU cores)"
+    )
+    parser.add_argument(
+        "--step-km", type=float, default=1.0,
+        help="Ray integration step size in km (default: 1.0, larger=faster but less accurate)"
+    )
+    parser.add_argument(
+        "--freq-step", type=float, default=1.0,
+        help="Frequency search step in MHz (default: 1.0)"
+    )
+    parser.add_argument(
+        "--elev-step", type=float, default=10.0,
+        help="Elevation search step in degrees (default: 10.0)"
+    )
+    parser.add_argument(
+        "--max-hops", type=int, default=3,
+        help="Maximum ground reflections for multi-hop paths (default: 3)"
+    )
+    parser.add_argument(
+        "--tolerance", type=float, default=100.0,
+        help="Landing tolerance in km (default: 100, try 200-500 for long paths)"
     )
     return parser.parse_args()
 
@@ -591,11 +1325,23 @@ def main():
     rx_lat, rx_lon = map(float, args.rx.split(","))
     freq_min, freq_max = map(float, args.freq.split(","))
 
+    # Determine number of workers
+    cpu_count = multiprocessing.cpu_count()
+    num_workers = args.workers if args.workers else cpu_count
+
     # Create application
     app = QApplication(sys.argv)
 
     # Create and configure window
-    window = IONORTLiveWindow()
+    window = IONORTLiveWindow(
+        use_live=args.live,
+        use_simulated=args.simulated
+    )
+
+    # Store runtime params for use in homing
+    window.step_km = args.step_km
+    window.max_hops = args.max_hops
+    window.tolerance_km = args.tolerance
 
     # Apply command line args to UI
     window.control_panel.tx_lat.setValue(tx_lat)
@@ -604,8 +1350,14 @@ def main():
     window.control_panel.rx_lon.setValue(rx_lon)
     window.control_panel.freq_min.setValue(freq_min)
     window.control_panel.freq_max.setValue(freq_max)
+    window.control_panel.freq_step.setValue(args.freq_step)
+    window.control_panel.elev_step.setValue(args.elev_step)
     window.control_panel.foF2.setValue(args.foF2)
     window.control_panel.hmF2.setValue(args.hmF2)
+
+    # Set workers (allow up to 64 in UI, default to num_workers)
+    window.control_panel.workers.setRange(1, 64)
+    window.control_panel.workers.setValue(num_workers)
 
     # NVIS mode adjustments
     if args.nvis:
@@ -617,7 +1369,16 @@ def main():
 
     logger.info("IONORT Live Dashboard started")
     logger.info(f"Tx: ({tx_lat}, {tx_lon}), Rx: ({rx_lat}, {rx_lon})")
-    logger.info(f"Frequency: {freq_min}-{freq_max} MHz")
+    logger.info(f"Frequency: {freq_min}-{freq_max} MHz, step={args.freq_step} MHz")
+    logger.info(f"Elevation step: {args.elev_step}°")
+    logger.info(f"Workers: {num_workers} (CPUs: {cpu_count})")
+    logger.info(f"Integration step: {args.step_km} km")
+    logger.info(f"Max hops: {args.max_hops}")
+    logger.info(f"Landing tolerance: {args.tolerance} km")
+    if args.live:
+        logger.info("Live ionospheric data ENABLED")
+        if args.simulated:
+            logger.info("Using SIMULATED live data")
 
     sys.exit(app.exec())
 

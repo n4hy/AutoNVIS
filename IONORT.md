@@ -24,6 +24,7 @@ This document describes the IONORT-style ray tracing features implemented in Aut
   - [Search Space](#search-space)
   - [Landing Accuracy (Condition 10)](#landing-accuracy-condition-10)
   - [MUF/LUF/FOT Calculation](#mufluffot-calculation)
+  - [Multi-Hop Propagation](#multi-hop-propagation)
 - [IONORT Visualizations](#ionort-visualizations)
   - [Altitude vs Ground Range](#altitude-vs-ground-range-widget)
   - [3D Geographic View](#3d-geographic-view-widget)
@@ -63,7 +64,8 @@ src/raytracer/
 │   ├── rk45.py               # Dormand-Prince adaptive
 │   └── factory.py            # IntegratorFactory, create_integrator()
 ├── homing_algorithm.py       # HomingAlgorithm, WinnerTriplet, HomingResult
-├── haselgrove.py             # HaselgroveSolver (modified for pluggable integrators)
+├── haselgrove.py             # HaselgroveSolver (multi-hop, pluggable integrators)
+├── link_budget.py            # LinkBudgetCalculator, SNR, path loss (~760 LOC)
 └── ...
 
 src/visualization/pyqt/raytracer/
@@ -426,6 +428,69 @@ class HomingResult:
     luf: float  # Lowest Usable Frequency (lowest winner)
     fot: float  # Frequency of Optimum Traffic (0.85 * MUF)
 ```
+
+### Multi-Hop Propagation
+
+For long-distance paths (>2000 km), multiple ionospheric reflections with ground bounces are required.
+
+**Ground Reflection Model**:
+```python
+# Specular reflection at Earth's surface
+k_new = k - 2 * (k · n̂) * n̂
+```
+
+**Configuration**:
+```python
+@dataclass
+class HomingConfig:
+    max_hops: int = 3  # Maximum ground bounces
+    # ... other fields
+```
+
+**Link Budget with SNR**:
+
+The `WinnerTriplet` now includes signal quality metrics:
+
+```python
+@dataclass
+class WinnerTriplet:
+    # ... existing fields ...
+    snr_db: Optional[float]           # Signal-to-noise ratio
+    signal_strength_dbm: Optional[float]  # Received signal level
+    path_loss_db: Optional[float]     # Total path loss
+    hop_count: int                    # Number of ground reflections
+```
+
+**Link Budget Calculator**:
+
+```python
+from src.raytracer.link_budget import LinkBudgetCalculator
+
+calc = LinkBudgetCalculator(
+    tx_config=TransmitterConfig(power_watts=100),
+    rx_config=ReceiverConfig(bandwidth_hz=2400),
+    tx_antenna=AntennaConfig(gain_dbi=2.15),
+    rx_antenna=AntennaConfig(gain_dbi=6.0)
+)
+
+# Calculate SNR for a path
+result = calc.calculate(
+    frequency_mhz=7.0,
+    path_length_km=4000,
+    reflection_height_km=280,
+    hop_count=2,
+    tx_lat=34.0, tx_lon=-118.0
+)
+
+print(f"SNR: {result.snr_db:.1f} dB")
+```
+
+**Path Loss Components**:
+- Free-space path loss (FSPL)
+- D-layer absorption (varies with solar zenith angle)
+- Ground reflection loss (~3 dB per hop)
+- Deviative absorption (ray path through plasma)
+- Ionospheric focusing gain (~2 dB)
 
 ### Usage Example
 
@@ -895,6 +960,25 @@ python -m pytest tests/unit/test_homing_algorithm.py -v
 
 ## Changelog
 
+### v0.3.2 (February 23, 2026)
+
+- **Added**: Multi-hop ray tracing with ground reflection for long-distance paths
+- **Added**: Comprehensive link budget calculator (~760 LOC)
+  - Free-space path loss
+  - D-layer absorption (solar zenith angle, X-ray flux dependent)
+  - Ground reflection loss per hop
+  - Deviative absorption
+  - Ionospheric focusing gain
+  - ITU-R P.372 noise model (atmospheric, galactic, man-made)
+- **Added**: SNR, signal strength, and path loss fields in WinnerTriplet
+- **Added**: Radio configuration UI (TX power, antenna gains, RX bandwidth)
+- **Added**: Diagnostic console in live dashboard (copyable log output)
+- **Added**: GIRO ionosonde client for real-time foF2/hmF2
+- **Added**: Live ionosphere client with auto-reconnect
+- **Fixed**: Best SNR path visualization bug
+- **Modified**: HaselgroveSolver with `_reflect_at_ground()` method
+- **Modified**: Increased MAX_PATH_LENGTH_KM from 5000 to 15000
+
 ### v0.3.0 (February 22, 2026)
 
 - **Added**: Three numerical integrators (RK4, Adams-Bashforth/Moulton, RK45)
@@ -909,5 +993,5 @@ python -m pytest tests/unit/test_homing_algorithm.py -v
 
 ---
 
-**Last Updated**: February 22, 2026
-**Version**: 0.3.0
+**Last Updated**: February 23, 2026
+**Version**: 0.3.2
