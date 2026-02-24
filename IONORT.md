@@ -485,6 +485,10 @@ result = calc.calculate(
 print(f"SNR: {result.snr_db:.1f} dB")
 ```
 
+**SNR Filtering**:
+
+Winners with SNR < 0 dB are automatically filtered out. While such paths are physically valid (the SNR is computed from real physics), they are unusable for practical communication. Only paths with positive SNR appear in the winner triplets table.
+
 **Path Loss Components**:
 - Free-space path loss (FSPL)
 - D-layer absorption (varies with solar zenith angle)
@@ -971,6 +975,24 @@ python -m pytest tests/unit/test_homing_algorithm.py -v
 
 ## Changelog
 
+### v0.3.4 (February 24, 2026)
+
+- **Added**: SNR filtering - paths with SNR < 0 dB are excluded from winners
+  - Negative SNR paths are physically computed but unusable for communication
+  - Prevents misleading negative SNR values in winner triplets table
+  - Applied to demo scripts and homing algorithm
+- **Added**: Tolerance parameter control in live dashboard UI
+  - Configurable landing tolerance (10-500 km)
+  - Exposed in control panel as spin box
+- **Improved**: Integrator dropdown ordered by speed (ABM > RK45 > RK4)
+  - ABM default (fastest: 2 evals/step)
+  - RK45 medium (7 evals/step, most accurate)
+  - RK4 slow (12 evals/step)
+  - Tooltips explain trade-offs
+- **Fixed**: Auto-scale now uses 90% of window for ray traces
+  - Ray paths fill display area properly
+  - Both width and height optimized
+
 ### v0.3.3 (February 23, 2026)
 
 - **Added**: Interactive frequency filter buttons in altitude/range widget
@@ -1012,5 +1034,5 @@ python -m pytest tests/unit/test_homing_algorithm.py -v
 
 ---
 
-**Last Updated**: February 23, 2026
-**Version**: 0.3.3
+**Last Updated**: February 24, 2026
+**Version**: 0.3.4

@@ -2,7 +2,7 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
-**Version:** 0.3.3 | **Status:** ✅ Production Ready (Filter Core + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Live Dashboard + Multi-Hop + Link Budget) | **Last Updated:** February 23, 2026
+**Version:** 0.3.4 | **Status:** ✅ Production Ready (Filter Core + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Live Dashboard + Multi-Hop + Link Budget) | **Last Updated:** February 24, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-73%25%20passing-yellow)]()
@@ -63,9 +63,11 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 
 **Result**: Continuous, accurate NVIS frequency planning during Solar Cycle 25 volatility.
 
-**New in v0.3.2**: Multi-hop ray tracing for long-distance paths (4000+ km), comprehensive link budget calculator with SNR/path loss/D-layer absorption, real-time GIRO ionosonde client, and enhanced live dashboard with diagnostic console.
+**New in v0.3.4**: SNR filtering removes unusable paths (SNR < 0 dB) from winner triplets - no more misleading negative SNR values. Tolerance parameter now configurable in UI. Integrators ordered by speed (ABM fastest). Auto-scale uses 90% of window for ray traces.
 
-**v0.3.0 Features**: Full IONORT-style implementation with RK4/RK45/Adams-Bashforth integrators, winner triplet homing, and three visualization widgets (Altitude vs Ground Range, 3D Geographic, Synthetic Ionogram). See [IONORT.md](IONORT.md) for details.
+**v0.3.2**: Multi-hop ray tracing for long-distance paths (4000+ km), comprehensive link budget calculator with SNR/path loss/D-layer absorption, real-time GIRO ionosonde client, and enhanced live dashboard with diagnostic console.
+
+**v0.3.0**: Full IONORT-style implementation with RK4/RK45/Adams-Bashforth integrators, winner triplet homing, and three visualization widgets (Altitude vs Ground Range, 3D Geographic, Synthetic Ionogram). See [IONORT.md](IONORT.md) for details.
 
 ### Key Features
 
@@ -2181,7 +2183,7 @@ If you use Auto-NVIS in your research, please cite:
 - **Test Pass Rate**: 78% (222/284 tests)
 - **CPU Stress Tests**: 110s brutal system integration ✅
 - **Contributors**: [TBD]
-- **Last Updated**: February 23, 2026
+- **Last Updated**: February 24, 2026
 
 ---
 
@@ -2238,6 +2240,6 @@ This ensures the system can handle real-world solar storms and production worklo
 ---
 
 **Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Multi-Hop + Link Budget)
-**Last Updated**: February 23, 2026
-**Version**: 0.3.3
+**Last Updated**: February 24, 2026
+**Version**: 0.3.4
 **Next Milestone**: Test Failure Resolution + Extended Validation (Phases 13-14)
