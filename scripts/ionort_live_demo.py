@@ -811,6 +811,8 @@ class IONORTLiveWindow(QMainWindow):
         self.use_live = use_live
         self.use_simulated = use_simulated
         self.step_km = 1.0  # Default integration step, can be overridden
+        self.last_result: Optional[HomingResult] = None  # Store last result for re-filtering
+        self.excluded_frequencies: set = set()  # Currently excluded frequency ranges
         self._setup_ui()
 
     def _setup_ui(self):
@@ -882,6 +884,11 @@ class IONORTLiveWindow(QMainWindow):
         # Visualization panel (right)
         self.viz_panel = IONORTVisualizationPanel()
         splitter.addWidget(self.viz_panel)
+
+        # Connect frequency filter signal from altitude widget
+        self.viz_panel.altitude_widget.frequency_filter_changed.connect(
+            self._on_frequency_filter_changed
+        )
 
         # Set splitter sizes (control: 350px, viz: rest)
         splitter.setSizes([350, 1250])
@@ -997,6 +1004,77 @@ class IONORTLiveWindow(QMainWindow):
         logger.warning(f"Live data error: {error_msg}")
         self.statusBar().showMessage(f"Live data error: {error_msg}")
 
+    def _on_frequency_filter_changed(self, excluded_freqs: set):
+        """Handle frequency filter button toggle - re-render with filtered frequencies."""
+        self.excluded_frequencies = excluded_freqs
+        self.log(f"Frequency filter changed: excluding {sorted(excluded_freqs)}")
+
+        if self.last_result and self.last_result.winner_triplets:
+            self._render_filtered_result()
+
+    def _render_filtered_result(self):
+        """Re-render the last result with current frequency filters applied."""
+        if not self.last_result:
+            return
+
+        # Clear and re-render with filtered winners
+        result = self.last_result
+
+        # Filter winners based on excluded frequencies
+        filtered_winners = []
+        for w in result.winner_triplets:
+            # Check if frequency is within 2.5 MHz of any excluded value
+            excluded = any(abs(w.frequency_mhz - ef) <= 2.5 for ef in self.excluded_frequencies)
+            if not excluded:
+                filtered_winners.append(w)
+
+        self.log(f"Filtering: {len(result.winner_triplets)} total, {len(filtered_winners)} shown")
+
+        # Clear visualization
+        self.viz_panel.altitude_widget.clear()
+        self.viz_panel.geographic_widget.clear()
+
+        if not filtered_winners:
+            self.statusBar().showMessage("All frequencies filtered out")
+            return
+
+        # Get Tx/Rx positions
+        tx_lat, tx_lon, tx_alt = result.tx_position
+        rx_lat, rx_lon, rx_alt = result.rx_position
+
+        # Re-add markers
+        self.viz_panel.geographic_widget.add_marker(tx_lat, tx_lon, tx_alt, '#ff4444', 150)
+        self.viz_panel.geographic_widget.add_marker(rx_lat, rx_lon, rx_alt, '#44ff44', 150)
+
+        # Set frequency range for coloring
+        frequencies = [w.frequency_mhz for w in filtered_winners]
+        freq_min = min(frequencies)
+        freq_max = max(frequencies)
+        self.viz_panel.altitude_widget.set_frequency_range(freq_min, freq_max)
+
+        # Re-add filtered ray paths
+        paths_added = 0
+        for w in filtered_winners:
+            if w.ray_path and w.ray_path.states:
+                positions = [s.lat_lon_alt() for s in w.ray_path.states]
+                is_reflected = w.ray_path.termination.value == 'ground'
+                is_o_mode = w.mode.value == 'O'
+
+                self.viz_panel.altitude_widget.add_ray_path_from_positions(
+                    positions, tx_lat, tx_lon,
+                    w.frequency_mhz, is_reflected, is_o_mode
+                )
+                self.viz_panel.geographic_widget.add_ray_path(
+                    positions, w.frequency_mhz, freq_min, freq_max
+                )
+                paths_added += 1
+
+        # Update status
+        excluded_count = len(result.winner_triplets) - len(filtered_winners)
+        self.statusBar().showMessage(
+            f"Showing {len(filtered_winners)} paths ({excluded_count} filtered out)"
+        )
+
     def _run_homing(self):
         """Start homing algorithm in background thread."""
         if self.worker is not None and self.worker.isRunning():
@@ -1069,6 +1147,9 @@ class IONORTLiveWindow(QMainWindow):
     def _on_finished(self, result: HomingResult):
         """Handle homing completion."""
         self.control_panel.set_running(False)
+
+        # Store result for re-filtering when frequency buttons are clicked
+        self.last_result = result
 
         # Calculate SNR for winners FIRST
         if result.num_winners > 0:

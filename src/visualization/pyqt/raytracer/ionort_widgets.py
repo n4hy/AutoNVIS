@@ -18,10 +18,10 @@ All widgets use:
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout,
     QTableWidget, QTableWidgetItem, QHeaderView, QSplitter, QGroupBox,
-    QScrollArea, QSizePolicy
+    QScrollArea, QSizePolicy, QPushButton
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPen
+from PyQt6.QtGui import QColor, QPen, QFont
 import pyqtgraph as pg
 import numpy as np
 from typing import List, Dict, Optional, Tuple
@@ -78,6 +78,78 @@ def frequency_to_color(freq_mhz: float, freq_min: float = 2.0, freq_max: float =
     return f'#{r:02x}{g:02x}{b:02x}'
 
 
+class FrequencyFilterButton(QPushButton):
+    """
+    Clickable frequency filter button.
+
+    When enabled, shows the frequency color. When disabled, shows grey.
+    Click to toggle inclusion in ray trace.
+    """
+
+    # Signal emitted when button is toggled (freq_mhz, is_enabled)
+    frequency_toggled = pyqtSignal(float, bool)
+
+    def __init__(self, freq_mhz: float, color: str, parent=None):
+        super().__init__(parent)
+        self.freq_mhz = freq_mhz
+        self.active_color = color
+        self.enabled_state = True
+
+        self.setText(f" {int(freq_mhz)} MHz ")
+        self.setCheckable(True)
+        self.setChecked(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFont(QFont("", 10, QFont.Weight.Bold))
+
+        self._update_style()
+        self.clicked.connect(self._on_clicked)
+
+    def _update_style(self):
+        """Update button style based on enabled state."""
+        if self.enabled_state:
+            # Active: show frequency color
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {self.active_color};
+                    color: black;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    border: 2px solid #ffffff;
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    border: 2px solid #ffff00;
+                }}
+            """)
+        else:
+            # Disabled: show grey
+            self.setStyleSheet("""
+                QPushButton {
+                    background-color: #555555;
+                    color: #888888;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    border: 2px solid #333333;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    border: 2px solid #888888;
+                }
+            """)
+
+    def _on_clicked(self):
+        """Handle click to toggle state."""
+        self.enabled_state = not self.enabled_state
+        self._update_style()
+        self.frequency_toggled.emit(self.freq_mhz, self.enabled_state)
+
+    def set_enabled_state(self, enabled: bool):
+        """Set enabled state programmatically."""
+        self.enabled_state = enabled
+        self.setChecked(enabled)
+        self._update_style()
+
+
 @dataclass
 class IonogramTrace:
     """Data for ionogram trace (O or X mode)."""
@@ -97,9 +169,14 @@ class AltitudeGroundRangeWidget(QWidget):
     - Solid lines for reflected rays, dashed for escaped
     - O-mode thicker than X-mode
     - Earth curvature for paths > 500 km
+    - **Clickable frequency filter buttons** to exclude frequencies
 
     Like IONORT Figures 5, 7, 9.
     """
+
+    # Signal emitted when frequency filters change
+    # Emits a set of excluded frequency values (MHz)
+    frequency_filter_changed = pyqtSignal(set)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -107,6 +184,8 @@ class AltitudeGroundRangeWidget(QWidget):
         self.layer_items = []
         self.freq_min = 2.0
         self.freq_max = 30.0
+        self.frequency_buttons = {}  # freq_mhz -> FrequencyFilterButton
+        self.excluded_frequencies = set()  # Set of excluded frequency ranges
         self._setup_ui()
 
     def _setup_ui(self):
@@ -183,20 +262,75 @@ class AltitudeGroundRangeWidget(QWidget):
             self.layer_items.append(label)
 
     def _add_legend(self, layout):
-        """Add frequency color legend."""
+        """Add clickable frequency filter buttons."""
         legend_layout = QHBoxLayout()
         legend_layout.addStretch()
 
-        # Color bar simulation with labels
-        legend_layout.addWidget(QLabel("Frequency:"))
+        # Label
+        freq_label = QLabel("Filter Frequencies (click to toggle):")
+        freq_label.setStyleSheet("color: #ffffff; font-weight: bold;")
+        legend_layout.addWidget(freq_label)
 
-        for freq, color in [(2, '#ff0000'), (8, '#ffff00'), (15, '#00ff00'), (22, '#00ffff'), (30, '#0000ff')]:
-            box = QLabel(f" {freq} MHz ")
-            box.setStyleSheet(f"background-color: {color}; color: black; padding: 2px; border-radius: 3px;")
-            legend_layout.addWidget(box)
+        # Frequency filter buttons - these are clickable
+        self.frequency_buttons = {}
+        for freq, color in [(2, '#ff0000'), (5, '#ff8800'), (8, '#ffff00'),
+                            (12, '#88ff00'), (15, '#00ff00'), (20, '#00ffff'),
+                            (25, '#0088ff'), (30, '#0000ff')]:
+            btn = FrequencyFilterButton(freq, color, self)
+            btn.frequency_toggled.connect(self._on_frequency_toggled)
+            self.frequency_buttons[freq] = btn
+            legend_layout.addWidget(btn)
 
         legend_layout.addStretch()
+
+        # "Reset All" button
+        reset_btn = QPushButton("Reset All")
+        reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #336633;
+                color: white;
+                padding: 4px 8px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #448844;
+            }
+        """)
+        reset_btn.clicked.connect(self._reset_all_filters)
+        legend_layout.addWidget(reset_btn)
+
         layout.addLayout(legend_layout)
+
+    def _on_frequency_toggled(self, freq_mhz: float, is_enabled: bool):
+        """Handle frequency filter button toggle."""
+        if is_enabled:
+            self.excluded_frequencies.discard(freq_mhz)
+        else:
+            self.excluded_frequencies.add(freq_mhz)
+
+        # Emit signal with current excluded frequencies
+        self.frequency_filter_changed.emit(self.excluded_frequencies.copy())
+
+    def _reset_all_filters(self):
+        """Reset all frequency filters to enabled."""
+        self.excluded_frequencies.clear()
+        for btn in self.frequency_buttons.values():
+            btn.set_enabled_state(True)
+        self.frequency_filter_changed.emit(self.excluded_frequencies.copy())
+
+    def get_excluded_frequencies(self) -> set:
+        """Get the set of currently excluded frequencies."""
+        return self.excluded_frequencies.copy()
+
+    def is_frequency_excluded(self, freq_mhz: float) -> bool:
+        """Check if a frequency should be excluded based on filter buttons.
+
+        A frequency is excluded if it falls within 2 MHz of any excluded button value.
+        """
+        for excluded_freq in self.excluded_frequencies:
+            if abs(freq_mhz - excluded_freq) <= 2.5:
+                return True
+        return False
 
     def clear(self):
         """Clear all ray paths."""
