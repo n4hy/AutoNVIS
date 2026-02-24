@@ -12,7 +12,7 @@ Features:
 - Three-panel visualization dashboard
 
 Usage:
-    python scripts/ionort_live_demo.py [--tx LAT,LON] [--rx LAT,LON] [--live]
+    python scripts/ionort_live_demo.py [--tx LAT,LON] [--rx LAT,LON] [--live] [options]
 
 Examples:
     # Default with live data
@@ -21,8 +21,14 @@ Examples:
     # Custom path: New York to Washington DC
     python scripts/ionort_live_demo.py --tx 40.7,-74.0 --rx 38.9,-77.0 --live
 
+    # NYC to Chicago with FT8 SNR threshold
+    python scripts/ionort_live_demo.py --tx 40.71,-74.00 --rx 41.88,-87.63 --snr-cutoff -20
+
     # NVIS mode (short range, high elevation)
     python scripts/ionort_live_demo.py --tx 40.0,-105.0 --rx 40.5,-104.5 --nvis --live
+
+    # Long path with relaxed tolerance and voice-quality SNR
+    python scripts/ionort_live_demo.py --tx 34.0,-118.0 --rx 40.7,-74.0 --tolerance 200 --snr-cutoff 10
 
     # Simulated live data (for testing without network)
     python scripts/ionort_live_demo.py --live --simulated
@@ -1524,6 +1530,11 @@ def parse_args():
         "--tolerance", type=float, default=100.0,
         help="Landing tolerance in km (default: 100, try 200-500 for long paths)"
     )
+    parser.add_argument(
+        "--snr-cutoff", type=float, default=0.0,
+        help="Minimum SNR threshold in dB (default: 0, range: -20 to 60). "
+             "Use -20 for FT8/digital, 0 for CW, 10+ for voice"
+    )
     return parser.parse_args()
 
 
@@ -1571,6 +1582,10 @@ def main():
 
     # Set tolerance from command line
     window.control_panel.tolerance.setValue(args.tolerance)
+
+    # Set SNR cutoff from command line (clamp to valid range)
+    snr_cutoff = max(-20.0, min(60.0, args.snr_cutoff))
+    window.control_panel.snr_cutoff.setValue(snr_cutoff)
 
     # NVIS mode adjustments
     if args.nvis:
