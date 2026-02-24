@@ -1105,6 +1105,7 @@ class HomingAlgorithm:
         kp_index: float = 2.0,
         is_night: bool = False,
         noise_environment: str = "rural",
+        min_snr_db: float = 0.0,
     ) -> 'HomingResult':
         """
         Calculate SNR for all winner triplets in a homing result.
@@ -1119,9 +1120,11 @@ class HomingAlgorithm:
             kp_index: Geomagnetic Kp index (0-9)
             is_night: True if nighttime propagation
             noise_environment: One of 'quiet_rural', 'rural', 'residential', 'urban', 'industrial'
+            min_snr_db: Minimum usable SNR threshold (-20 to 60 dB, default 0)
+                        Paths below this are filtered out. Use -20 for FT8, 0 for CW, 10+ for voice.
 
         Returns:
-            Updated HomingResult with SNR values populated
+            Updated HomingResult with SNR values populated (unusable paths filtered out)
         """
         from .link_budget import (
             LinkBudgetCalculator,
@@ -1166,8 +1169,7 @@ class HomingAlgorithm:
             solar_zenith = 45.0  # Default
 
         # Calculate SNR for each winner and filter unusable paths
-        # Minimum usable SNR: 0 dB (paths below this are not usable for communication)
-        MIN_USABLE_SNR_DB = 0.0
+        # Use configurable threshold (default 0 dB, range -20 to 60)
         valid_winners = []
 
         for winner in result.winner_triplets:
@@ -1185,10 +1187,10 @@ class HomingAlgorithm:
 
                 snr = link_result.snr_db
 
-                # Filter unusable paths - negative SNR means path is not usable
-                if snr < MIN_USABLE_SNR_DB:
+                # Filter unusable paths based on user-configurable threshold
+                if snr < min_snr_db:
                     logger.debug(f"Winner {winner.frequency_mhz:.1f}MHz rejected: "
-                                f"SNR {snr:.0f}dB below usable threshold")
+                                f"SNR {snr:.0f}dB below {min_snr_db:.0f}dB cutoff")
                     continue
 
                 winner.snr_db = snr

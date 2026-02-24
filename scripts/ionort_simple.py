@@ -117,6 +117,13 @@ class MainWindow(QMainWindow):
         self.foF2.setValue(7.0)
         left_layout.addWidget(self.foF2)
 
+        left_layout.addWidget(QLabel("SNR Cutoff (dB):"))
+        self.snr_cutoff = QDoubleSpinBox()
+        self.snr_cutoff.setRange(-20, 60)
+        self.snr_cutoff.setValue(0.0)
+        self.snr_cutoff.setToolTip("-20 for FT8, 0 for CW, 10+ for voice")
+        left_layout.addWidget(self.snr_cutoff)
+
         self.progress = QProgressBar()
         left_layout.addWidget(self.progress)
 
@@ -301,10 +308,10 @@ class MainWindow(QMainWindow):
                     raise ValueError(f"Non-physical SNR: {snr}")
 
                 # Filter: SNR must be usable for practical communication
-                # Minimum 0 dB for any mode
-                MIN_USABLE_SNR_DB = 0.0
-                if snr < MIN_USABLE_SNR_DB:
-                    print(f"  #{idx}: {freq:.1f}MHz REJECTED - SNR {snr:.0f}dB below usable threshold")
+                # User-configurable: -20 for FT8, 0 for CW, 10+ for voice
+                snr_cutoff = self.snr_cutoff.value()
+                if snr < snr_cutoff:
+                    print(f"  #{idx}: {freq:.1f}MHz REJECTED - SNR {snr:.0f}dB below {snr_cutoff:.0f}dB cutoff")
                     invalid_count += 1
                     continue
 

@@ -504,6 +504,19 @@ class ControlPanel(QWidget):
         tol_layout.addStretch()
         opts_layout.addLayout(tol_layout)
 
+        # SNR Cutoff (minimum usable SNR threshold)
+        snr_cutoff_layout = QHBoxLayout()
+        snr_cutoff_layout.addWidget(QLabel("SNR Cutoff (dB):"))
+        self.snr_cutoff = QDoubleSpinBox()
+        self.snr_cutoff.setRange(-20, 60)
+        self.snr_cutoff.setValue(0.0)
+        self.snr_cutoff.setDecimals(0)
+        self.snr_cutoff.setToolTip("Minimum SNR threshold - paths below this are filtered out\n"
+                                    "-20 dB for FT8/digital, 0 dB for CW, 10+ dB for voice")
+        snr_cutoff_layout.addWidget(self.snr_cutoff)
+        snr_cutoff_layout.addStretch()
+        opts_layout.addLayout(snr_cutoff_layout)
+
         layout.addWidget(opts_group)
 
         # Radio Configuration (for link budget / SNR calculation)
@@ -1349,10 +1362,10 @@ class IONORTLiveWindow(QMainWindow):
                     raise ValueError(f"Non-physical SNR: {snr}")
 
                 # Filter: SNR must be usable for practical communication
-                # Minimum 0 dB for any mode (FT8 can work at -20, but we want usable paths)
-                MIN_USABLE_SNR_DB = 0.0
-                if snr < MIN_USABLE_SNR_DB:
-                    self.log(f"  #{idx}: {freq:.1f}MHz REJECTED - SNR {snr:.0f}dB below usable threshold")
+                # User-configurable threshold: -20 dB for FT8, 0 dB for CW, 10+ dB for voice
+                snr_cutoff = self.control_panel.snr_cutoff.value()
+                if snr < snr_cutoff:
+                    self.log(f"  #{idx}: {freq:.1f}MHz REJECTED - SNR {snr:.0f}dB below {snr_cutoff:.0f}dB cutoff")
                     invalid_count += 1
                     continue
 
