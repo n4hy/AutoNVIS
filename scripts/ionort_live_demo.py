@@ -1523,6 +1523,15 @@ def parse_args():
         help="Elevation search step in degrees (default: 10.0)"
     )
     parser.add_argument(
+        "--elev-min", type=float, default=10.0,
+        help="Minimum elevation angle in degrees (default: 10, range: 0-89)"
+    )
+    parser.add_argument(
+        "--elev-max", type=float, default=80.0,
+        help="Maximum elevation angle in degrees (default: 80, range: 1-90). "
+             "Use 89 for NVIS, 45-60 for skip zone analysis"
+    )
+    parser.add_argument(
         "--max-hops", type=int, default=3,
         help="Maximum ground reflections for multi-hop paths (default: 3)"
     )
@@ -1573,6 +1582,8 @@ def main():
     window.control_panel.freq_max.setValue(freq_max)
     window.control_panel.freq_step.setValue(args.freq_step)
     window.control_panel.elev_step.setValue(args.elev_step)
+    window.control_panel.elev_min.setValue(max(0.0, min(89.0, args.elev_min)))
+    window.control_panel.elev_max.setValue(max(1.0, min(90.0, args.elev_max)))
     window.control_panel.foF2.setValue(args.foF2)
     window.control_panel.hmF2.setValue(args.hmF2)
 
