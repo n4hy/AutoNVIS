@@ -783,13 +783,34 @@ python scripts/ionort_simple.py
 # Full-featured dashboard with command-line options
 python scripts/ionort_live_demo.py --tx 40.0,-105.0 --rx 35.0,-106.0 --freq 3,15
 
+# NYC to Chicago with FT8 SNR threshold and max 50° elevation
+./run_ionort_demo.sh live --tx 40.71,-74.00 --rx 41.88,-87.63 --snr-cutoff -20 --elev-max 50 --live
+
+# LA to NYC long path with relaxed tolerance
+./run_ionort_demo.sh live --tx 34.0,-118.0 --rx 40.7,-74.0 --tolerance 200 --snr-cutoff 0
+
 # NVIS mode (short range, high elevation angles)
-python scripts/ionort_live_demo.py --nvis
+python scripts/ionort_live_demo.py --nvis --live
 ```
+
+**Command Line Options** (use `--help` for full list):
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--tx LAT,LON` | 40.0,-105.0 | Transmitter position |
+| `--rx LAT,LON` | 35.0,-106.0 | Receiver position |
+| `--freq MIN,MAX` | 3,15 | Frequency range (MHz) |
+| `--elev-min` | 10 | Minimum elevation angle (0-89°) |
+| `--elev-max` | 80 | Maximum elevation angle (1-90°) |
+| `--snr-cutoff` | 0 | Minimum SNR threshold (-20 to 60 dB) |
+| `--tolerance` | 100 | Landing tolerance (km) |
+| `--live` | off | Enable live ionospheric data |
+| `--nvis` | off | NVIS mode (60-89° elevation) |
 
 **Dashboard Features**:
 - Configurable Tx/Rx positions
 - Adjustable frequency and elevation ranges
+- Configurable SNR cutoff (-20 dB for FT8, 0 dB for CW, 10+ for voice)
 - Ionosphere parameters (foF2, hmF2)
 - Integrator selection (RK4, ABM, RK45)
 - Progress bar during ray tracing
@@ -977,21 +998,21 @@ python -m pytest tests/unit/test_homing_algorithm.py -v
 
 ### v0.3.4 (February 24, 2026)
 
-- **Added**: SNR filtering - paths with SNR < 0 dB are excluded from winners
-  - Negative SNR paths are physically computed but unusable for communication
-  - Prevents misleading negative SNR values in winner triplets table
-  - Applied to demo scripts and homing algorithm
-- **Added**: Tolerance parameter control in live dashboard UI
+- **Added**: SNR filtering - configurable minimum SNR threshold
+  - `--snr-cutoff` command line argument (-20 to 60 dB, default 0)
+  - Paths below threshold excluded from winners
+  - Use -20 dB for FT8/digital, 0 dB for CW, 10+ dB for voice
+- **Added**: Elevation angle range via command line
+  - `--elev-min` (0-89°, default 10)
+  - `--elev-max` (1-90°, default 80)
+- **Added**: Tolerance parameter control
+  - `--tolerance` command line argument (km)
   - Configurable landing tolerance (10-500 km)
-  - Exposed in control panel as spin box
 - **Improved**: Integrator dropdown ordered by speed (ABM > RK45 > RK4)
   - ABM default (fastest: 2 evals/step)
   - RK45 medium (7 evals/step, most accurate)
   - RK4 slow (12 evals/step)
-  - Tooltips explain trade-offs
 - **Fixed**: Auto-scale now uses 90% of window for ray traces
-  - Ray paths fill display area properly
-  - Both width and height optimized
 
 ### v0.3.3 (February 23, 2026)
 

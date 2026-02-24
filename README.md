@@ -63,7 +63,7 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 
 **Result**: Continuous, accurate NVIS frequency planning during Solar Cycle 25 volatility.
 
-**New in v0.3.4**: SNR filtering removes unusable paths (SNR < 0 dB) from winner triplets - no more misleading negative SNR values. Tolerance parameter now configurable in UI. Integrators ordered by speed (ABM fastest). Auto-scale uses 90% of window for ray traces.
+**New in v0.3.4**: Full command line control with `--snr-cutoff` (-20 to 60 dB), `--elev-min/max`, and `--tolerance`. SNR filtering removes unusable paths from winners. Use `--help` for all options.
 
 **v0.3.2**: Multi-hop ray tracing for long-distance paths (4000+ km), comprehensive link budget calculator with SNR/path loss/D-layer absorption, real-time GIRO ionosonde client, and enhanced live dashboard with diagnostic console.
 
@@ -807,8 +807,11 @@ World-class IONORT-style ray tracing implementation based on the IONORT paper (R
 # Quick launch (recommended)
 ./run_ionort_demo.sh
 
-# Or with full controls
-./run_ionort_demo.sh full --tx 40.0,-105.0 --rx 35.0,-106.0 --freq 3,15
+# NYC to Chicago with FT8 threshold, max 50° elevation
+./run_ionort_demo.sh live --tx 40.71,-74.00 --rx 41.88,-87.63 --snr-cutoff -20 --elev-max 50 --live
+
+# Full controls with custom parameters
+./run_ionort_demo.sh live --tx 40.0,-105.0 --rx 35.0,-106.0 --freq 3,15 --tolerance 150
 
 # Direct Python invocation
 python scripts/ionort_simple.py
