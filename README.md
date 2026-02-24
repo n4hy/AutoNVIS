@@ -2,7 +2,7 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
-**Version:** 0.3.2 | **Status:** ✅ Production Ready (Filter Core + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Live Dashboard + Multi-Hop + Link Budget) | **Last Updated:** February 23, 2026
+**Version:** 0.3.3 | **Status:** ✅ Production Ready (Filter Core + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Live Dashboard + Multi-Hop + Link Budget) | **Last Updated:** February 23, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-73%25%20passing-yellow)]()
@@ -77,6 +77,7 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 ✅ **IONORT-Style Ray Tracing** - Three integrators, homing algorithm, winner triplets
 ✅ **Multi-Hop Propagation** - Ground reflection for long-distance paths (4000+ km)
 ✅ **Link Budget Calculator** - SNR, path loss, D-layer absorption, ITU-R P.372 noise
+✅ **Interactive Frequency Filters** - Click frequency buttons to show/hide paths instantly
 ✅ **Professional Visualizations** - Altitude/Range, 3D Geographic, Synthetic Ionogram
 ✅ **Rigorously Tested** - 284 brutal tests, 78% passing (222/284)
 ✅ **Well Documented** - 6,000+ lines of technical documentation
@@ -2238,5 +2239,5 @@ This ensures the system can handle real-world solar storms and production worklo
 
 **Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Multi-Hop + Link Budget)
 **Last Updated**: February 23, 2026
-**Version**: 0.3.2
+**Version**: 0.3.3
 **Next Milestone**: Test Failure Resolution + Extended Validation (Phases 13-14)

@@ -565,6 +565,17 @@ Like IONORT Figures 5, 7, 9.
 - Rainbow frequency coloring (red=low MHz, blue=high MHz)
 - Solid lines for reflected rays, dashed for escaped
 - O-mode thicker than X-mode
+- **Interactive frequency filter buttons** (click to show/hide frequency ranges)
+
+**Frequency Filter Buttons**:
+The frequency legend at the bottom consists of clickable toggle buttons:
+- Click a frequency button to **exclude** that frequency range (button turns grey)
+- Click again to **re-include** (button returns to original color)
+- "Reset All" button restores all frequencies
+- Filtering is instant (no re-tracing required)
+- Frequency matching uses ±2.5 MHz tolerance
+
+Available filter frequencies: 2, 5, 8, 12, 15, 20, 25, 30 MHz
 
 ```python
 from src.visualization.pyqt.raytracer.ionort_widgets import AltitudeGroundRangeWidget
@@ -960,6 +971,14 @@ python -m pytest tests/unit/test_homing_algorithm.py -v
 
 ## Changelog
 
+### v0.3.3 (February 23, 2026)
+
+- **Added**: Interactive frequency filter buttons in altitude/range widget
+  - Click to toggle frequency ranges on/off
+  - Instant re-rendering without re-tracing
+  - "Reset All" button to restore all frequencies
+- **Added**: FrequencyFilterButton widget class with toggle styling
+
 ### v0.3.2 (February 23, 2026)
 
 - **Added**: Multi-hop ray tracing with ground reflection for long-distance paths
@@ -994,4 +1013,4 @@ python -m pytest tests/unit/test_homing_algorithm.py -v
 ---
 
 **Last Updated**: February 23, 2026
-**Version**: 0.3.2
+**Version**: 0.3.3
