@@ -178,14 +178,17 @@ class AltitudeGroundRangeWidget(QWidget):
     # Emits a set of excluded frequency values (MHz)
     frequency_filter_changed = pyqtSignal(set)
 
+    # Fixed frequency range for consistent color mapping
+    # Buttons and rays MUST use the same range for colors to match
+    FREQ_MIN = 2.0
+    FREQ_MAX = 30.0
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.ray_curves = []
+        self.ray_curves = []  # List of (curve, frequency_mhz) tuples
         self.layer_items = []
-        self.freq_min = 2.0
-        self.freq_max = 30.0
         self.frequency_buttons = {}  # freq_mhz -> FrequencyFilterButton
-        self.excluded_frequencies = set()  # Set of excluded frequency ranges
+        self.excluded_frequencies = set()  # Set of excluded frequency values
         self._setup_ui()
 
     def _setup_ui(self):
@@ -271,11 +274,13 @@ class AltitudeGroundRangeWidget(QWidget):
         freq_label.setStyleSheet("color: #ffffff; font-weight: bold;")
         legend_layout.addWidget(freq_label)
 
-        # Frequency filter buttons - these are clickable
+        # Frequency filter buttons - use frequency_to_color for consistent colors
+        # CRITICAL: Must use same FREQ_MIN/FREQ_MAX as ray paths for colors to match
         self.frequency_buttons = {}
-        for freq, color in [(2, '#ff0000'), (5, '#ff8800'), (8, '#ffff00'),
-                            (12, '#88ff00'), (15, '#00ff00'), (20, '#00ffff'),
-                            (25, '#0088ff'), (30, '#0000ff')]:
+        button_frequencies = [2, 5, 8, 12, 15, 20, 25, 30]
+        for freq in button_frequencies:
+            # Use the FIXED frequency range for consistent color mapping
+            color = frequency_to_color(float(freq), self.FREQ_MIN, self.FREQ_MAX)
             btn = FrequencyFilterButton(freq, color, self)
             btn.frequency_toggled.connect(self._on_frequency_toggled)
             self.frequency_buttons[freq] = btn
@@ -308,6 +313,9 @@ class AltitudeGroundRangeWidget(QWidget):
         else:
             self.excluded_frequencies.add(freq_mhz)
 
+        # Update visibility of ray curves based on filter
+        self._update_ray_visibility()
+
         # Emit signal with current excluded frequencies
         self.frequency_filter_changed.emit(self.excluded_frequencies.copy())
 
@@ -316,32 +324,57 @@ class AltitudeGroundRangeWidget(QWidget):
         self.excluded_frequencies.clear()
         for btn in self.frequency_buttons.values():
             btn.set_enabled_state(True)
+        self._update_ray_visibility()
         self.frequency_filter_changed.emit(self.excluded_frequencies.copy())
+
+    def _update_ray_visibility(self):
+        """Update visibility of ray curves based on excluded frequencies."""
+        for curve, freq_mhz in self.ray_curves:
+            should_hide = self.is_frequency_excluded(freq_mhz)
+            curve.setVisible(not should_hide)
 
     def get_excluded_frequencies(self) -> set:
         """Get the set of currently excluded frequencies."""
         return self.excluded_frequencies.copy()
 
+    # Button frequencies for mapping traces to buttons
+    BUTTON_FREQUENCIES = [2, 5, 8, 12, 15, 20, 25, 30]
+
+    def _get_nearest_button_freq(self, freq_mhz: float) -> int:
+        """Find the nearest button frequency for a given trace frequency."""
+        nearest = self.BUTTON_FREQUENCIES[0]
+        min_dist = abs(freq_mhz - nearest)
+        for btn_freq in self.BUTTON_FREQUENCIES[1:]:
+            dist = abs(freq_mhz - btn_freq)
+            if dist < min_dist:
+                min_dist = dist
+                nearest = btn_freq
+        return nearest
+
     def is_frequency_excluded(self, freq_mhz: float) -> bool:
         """Check if a frequency should be excluded based on filter buttons.
 
-        A frequency is excluded if it falls within 2 MHz of any excluded button value.
+        Maps the trace frequency to its nearest button, then checks if that
+        button is in the excluded set.
         """
-        for excluded_freq in self.excluded_frequencies:
-            if abs(freq_mhz - excluded_freq) <= 2.5:
-                return True
-        return False
+        nearest_button = self._get_nearest_button_freq(freq_mhz)
+        return nearest_button in self.excluded_frequencies
 
     def clear(self):
         """Clear all ray paths."""
-        for curve in self.ray_curves:
+        for curve, freq_mhz in self.ray_curves:
             self.plot_widget.removeItem(curve)
         self.ray_curves = []
 
     def set_frequency_range(self, freq_min: float, freq_max: float):
-        """Set frequency range for color mapping."""
-        self.freq_min = freq_min
-        self.freq_max = freq_max
+        """Set frequency range for color mapping.
+
+        NOTE: This method is intentionally a no-op. Color mapping MUST use
+        the fixed FREQ_MIN/FREQ_MAX range (2-30 MHz) so that button colors
+        match ray colors. Do not change the color mapping range dynamically.
+        """
+        # Intentionally ignored - use fixed FREQ_MIN/FREQ_MAX for consistency
+        pass
 
     def add_ray_path(
         self,
@@ -364,7 +397,8 @@ class AltitudeGroundRangeWidget(QWidget):
         if len(ground_ranges) < 2 or len(altitudes) < 2:
             return
 
-        color = frequency_to_color(frequency_mhz, self.freq_min, self.freq_max)
+        # Use FIXED frequency range for color - must match button colors
+        color = frequency_to_color(frequency_mhz, self.FREQ_MIN, self.FREQ_MAX)
         width = 2.5 if is_o_mode else 1.5
 
         pen = pg.mkPen(color, width=width)
@@ -375,7 +409,12 @@ class AltitudeGroundRangeWidget(QWidget):
             ground_ranges, altitudes,
             pen=pen
         )
-        self.ray_curves.append(curve)
+        # Store curve with its frequency for filtering
+        self.ray_curves.append((curve, frequency_mhz))
+
+        # Apply current filter state
+        if self.is_frequency_excluded(frequency_mhz):
+            curve.setVisible(False)
 
     def add_ray_path_from_positions(
         self,
@@ -425,14 +464,67 @@ class AltitudeGroundRangeWidget(QWidget):
         self.add_ray_path(ground_ranges, altitudes, frequency_mhz, is_reflected, is_o_mode)
 
     def auto_scale(self, max_range: float = None, max_alt: float = None):
-        """Auto-scale plot axes to fit ray paths."""
-        if max_range is None:
-            max_range = 500
-        if max_alt is None:
-            max_alt = 500
+        """Auto-scale plot axes to fit all ray paths using 90%+ of window.
 
-        self.plot_widget.setXRange(-max_range * 1.1, max_range * 1.1, padding=0)
-        self.plot_widget.setYRange(0, max_alt * 1.1, padding=0)
+        Requirements:
+        1. Left-most to right-most trace points use 90% of window width
+        2. Highest trace point uses 90%+ of window height
+        3. X-axis symmetric around 0 (transmitter at origin)
+        4. Y-axis starts at 0 (ground level)
+        """
+        if not self.ray_curves:
+            # No data - use provided defaults or reasonable fallbacks
+            max_range = max_range or 500
+            max_alt = max_alt or 400
+            self.plot_widget.setXRange(-max_range, max_range, padding=0)
+            self.plot_widget.setYRange(0, max_alt, padding=0)
+            return
+
+        # Collect all data points from ALL curves
+        all_x = []
+        all_y = []
+        for curve, freq_mhz in self.ray_curves:
+            data = curve.getData()
+            if data[0] is not None and len(data[0]) > 0:
+                all_x.extend(data[0])
+                all_y.extend(data[1])
+
+        if not all_x or not all_y:
+            # No data at all - use defaults
+            max_range = max_range or 500
+            max_alt = max_alt or 400
+            self.plot_widget.setXRange(-max_range, max_range, padding=0)
+            self.plot_widget.setYRange(0, max_alt, padding=0)
+            return
+
+        # Find actual data extents
+        x_min_data, x_max_data = min(all_x), max(all_x)
+        y_max_data = max(all_y)
+
+        # For X: make symmetric around 0, use the larger absolute value
+        x_extent = max(abs(x_min_data), abs(x_max_data), 10)  # At least 10 km
+
+        # For Y: start at 0, go to max altitude
+        y_extent = max(y_max_data, 50)  # At least 50 km
+
+        # Calculate margins to achieve 90% utilization
+        # Data should fill 90%, so total range = data_range / 0.90
+        # Margin on each side = total_range * 0.05 = data_range * 0.05 / 0.90 ≈ 5.5%
+        x_margin = x_extent * 0.055  # ~5% margin each side = 90% data
+        y_margin = y_extent * 0.055  # ~5% margin top = 90%+ data (0 at bottom)
+
+        # Final ranges
+        x_total = x_extent + x_margin
+        y_total = y_extent + y_margin
+
+        # Set the plot ranges
+        self.plot_widget.setXRange(-x_total, x_total, padding=0)
+        self.plot_widget.setYRange(0, y_total, padding=0)
+
+        # Update layer label positions to be at left edge
+        for item in self.layer_items:
+            if isinstance(item, pg.TextItem):
+                item.setPos(-x_total * 0.98, item.pos().y())
 
     def set_info(self, text: str):
         """Set info label text."""
@@ -456,11 +548,16 @@ class Geographic3DWidget(QWidget):
     Requires PyOpenGL.
     """
 
+    # Fixed frequency range for consistent color mapping (must match AltitudeGroundRangeWidget)
+    FREQ_MIN = 2.0
+    FREQ_MAX = 30.0
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.ray_items = []
+        self.ray_items = []  # List of (line_item, frequency_mhz) tuples
         self.marker_items = []
         self.boundary_items = []
+        self.excluded_frequencies = set()  # Set of excluded frequency values
         self._setup_ui()
 
     def _setup_ui(self):
@@ -802,7 +899,9 @@ class Geographic3DWidget(QWidget):
         if not self.gl_widget:
             return
 
-        for item in self.ray_items + self.marker_items:
+        for item, freq_mhz in self.ray_items:
+            self.gl_widget.removeItem(item)
+        for item in self.marker_items:
             self.gl_widget.removeItem(item)
         self.ray_items = []
         self.marker_items = []
@@ -820,7 +919,7 @@ class Geographic3DWidget(QWidget):
         Args:
             positions: List of (lat, lon, alt) tuples
             frequency_mhz: Frequency for coloring
-            freq_min, freq_max: Frequency range for color mapping
+            freq_min, freq_max: IGNORED - uses fixed FREQ_MIN/FREQ_MAX for consistency
         """
         if not self.gl_widget or len(positions) < 2:
             return
@@ -838,15 +937,19 @@ class Geographic3DWidget(QWidget):
 
         pts = np.array(pts)
 
-        # Get color
-        color_hex = frequency_to_color(frequency_mhz, freq_min, freq_max)
+        # Get color - use FIXED frequency range for consistency with buttons
+        color_hex = frequency_to_color(frequency_mhz, self.FREQ_MIN, self.FREQ_MAX)
         r = int(color_hex[1:3], 16) / 255
         g = int(color_hex[3:5], 16) / 255
         b = int(color_hex[5:7], 16) / 255
 
         line = gl.GLLinePlotItem(pos=pts, color=(r, g, b, 1.0), width=2)
         self.gl_widget.addItem(line)
-        self.ray_items.append(line)
+        self.ray_items.append((line, frequency_mhz))
+
+        # Apply current filter state
+        if self._is_frequency_excluded(frequency_mhz):
+            line.setVisible(False)
 
     def add_marker(
         self,
@@ -900,6 +1003,51 @@ class Geographic3DWidget(QWidget):
         # Calculate camera azimuth to look at this point - keep full Earth visible
         azimuth = lon + 180
         self.gl_widget.setCameraPosition(distance=22000, elevation=25, azimuth=azimuth)
+
+    # Button frequencies for mapping traces to buttons (must match AltitudeGroundRangeWidget)
+    BUTTON_FREQUENCIES = [2, 5, 8, 12, 15, 20, 25, 30]
+
+    def _get_nearest_button_freq(self, freq_mhz: float) -> int:
+        """Find the nearest button frequency for a given trace frequency."""
+        nearest = self.BUTTON_FREQUENCIES[0]
+        min_dist = abs(freq_mhz - nearest)
+        for btn_freq in self.BUTTON_FREQUENCIES[1:]:
+            dist = abs(freq_mhz - btn_freq)
+            if dist < min_dist:
+                min_dist = dist
+                nearest = btn_freq
+        return nearest
+
+    def _is_frequency_excluded(self, freq_mhz: float) -> bool:
+        """Check if a frequency should be excluded based on filter.
+
+        Maps the trace frequency to its nearest button, then checks if that
+        button is in the excluded set.
+        """
+        nearest_button = self._get_nearest_button_freq(freq_mhz)
+        return nearest_button in self.excluded_frequencies
+
+    def set_excluded_frequencies(self, excluded: set):
+        """Set the excluded frequencies and update ray visibility.
+
+        This is called when the AltitudeGroundRangeWidget filter changes.
+        """
+        self.excluded_frequencies = excluded.copy()
+        self._update_ray_visibility()
+
+    def _update_ray_visibility(self):
+        """Update visibility of ray items based on excluded frequencies."""
+        if not self.gl_widget:
+            return
+        for item, freq_mhz in self.ray_items:
+            should_hide = self._is_frequency_excluded(freq_mhz)
+            item.setVisible(not should_hide)
+
+    def cleanup(self):
+        """Stop timer and release resources. Call before destroying widget."""
+        if hasattr(self, 'camera_timer') and self.camera_timer is not None:
+            self.camera_timer.stop()
+            self.camera_timer = None
 
 
 class SyntheticIonogramWidget(QWidget):
@@ -1013,8 +1161,8 @@ class SyntheticIonogramWidget(QWidget):
         table_layout.addWidget(table_title)
 
         self.triplet_table = QTableWidget()
-        self.triplet_table.setColumnCount(5)
-        self.triplet_table.setHorizontalHeaderLabels(['f (MHz)', 'El (°)', 'Az (°)', 'Delay (ms)', 'Mode'])
+        self.triplet_table.setColumnCount(6)
+        self.triplet_table.setHorizontalHeaderLabels(['f (MHz)', 'El (°)', 'Az (°)', 'Delay (ms)', 'Mode', 'SNR (dB)'])
         self.triplet_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.triplet_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.triplet_table.setStyleSheet("""
@@ -1164,16 +1312,18 @@ class SyntheticIonogramWidget(QWidget):
             azim = t.get('azimuth_deg', 0)
             delay = t.get('group_delay_ms', 0)
             mode = t.get('mode', 'O')
+            snr = t.get('snr_db', None)
 
             self.triplet_table.setItem(i, 0, QTableWidgetItem(f"{freq:.2f}"))
             self.triplet_table.setItem(i, 1, QTableWidgetItem(f"{elev:.1f}"))
             self.triplet_table.setItem(i, 2, QTableWidgetItem(f"{azim:.1f}"))
             self.triplet_table.setItem(i, 3, QTableWidgetItem(f"{delay:.2f}"))
             self.triplet_table.setItem(i, 4, QTableWidgetItem(mode))
+            self.triplet_table.setItem(i, 5, QTableWidgetItem(f"{snr:.0f}" if snr is not None else "--"))
 
             # Color row by mode
             color = QColor('#334466') if mode == 'O' else QColor('#443344')
-            for col in range(5):
+            for col in range(6):
                 self.triplet_table.item(i, col).setBackground(color)
 
             if mode == 'O':
@@ -1226,6 +1376,11 @@ class IONORTVisualizationPanel(QWidget):
         top_splitter.addWidget(self.altitude_widget)
 
         self.geographic_widget = Geographic3DWidget()
+
+        # Connect frequency filter from altitude widget to geographic widget
+        self.altitude_widget.frequency_filter_changed.connect(
+            self.geographic_widget.set_excluded_frequencies
+        )
         top_splitter.addWidget(self.geographic_widget)
 
         main_splitter.addWidget(top_splitter)
@@ -1271,11 +1426,8 @@ class IONORTVisualizationPanel(QWidget):
         mid_lon = (tx_lon + rx_lon) / 2
         self.geographic_widget.focus_on(mid_lat, mid_lon)
 
-        # Set frequency range for coloring
-        frequencies = [w.frequency_mhz for w in result.winner_triplets]
-        freq_min = min(frequencies)
-        freq_max = max(frequencies)
-        self.altitude_widget.set_frequency_range(freq_min, freq_max)
+        # Note: Color mapping uses fixed 2-30 MHz range (FREQ_MIN/FREQ_MAX constants)
+        # This ensures button colors always match ray colors
 
         # Collect traces for ionogram
         o_freqs = []
@@ -1317,9 +1469,9 @@ class IONORTVisualizationPanel(QWidget):
                     w.frequency_mhz, is_reflected, is_o_mode
                 )
 
-                # Add to 3D widget
+                # Add to 3D widget (uses fixed 2-30 MHz color range)
                 self.geographic_widget.add_ray_path(
-                    positions, w.frequency_mhz, freq_min, freq_max
+                    positions, w.frequency_mhz
                 )
             else:
                 paths_without_data += 1
@@ -1354,9 +1506,13 @@ class IONORTVisualizationPanel(QWidget):
         self.ionogram_widget.set_winner_triplets(triplet_dicts)
         self.ionogram_widget.auto_scale()
 
-        # Auto-scale altitude widget
-        self.altitude_widget.auto_scale(result.great_circle_range_km / 2, 500)
+        # Auto-scale altitude widget to fit all ray traces
+        self.altitude_widget.auto_scale()
 
         # Set info
         self.altitude_widget.set_info(f"Range: {result.great_circle_range_km:.0f} km")
         self.ionogram_widget.set_info(f"MUF: {result.muf:.1f} MHz, LUF: {result.luf:.1f} MHz")
+
+    def cleanup(self):
+        """Stop all timers and release resources. Call before destroying widget."""
+        self.geographic_widget.cleanup()

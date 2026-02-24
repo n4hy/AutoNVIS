@@ -1165,7 +1165,11 @@ class HomingAlgorithm:
         except Exception:
             solar_zenith = 45.0  # Default
 
-        # Calculate SNR for each winner
+        # Calculate SNR for each winner and filter unusable paths
+        # Minimum usable SNR: 0 dB (paths below this are not usable for communication)
+        MIN_USABLE_SNR_DB = 0.0
+        valid_winners = []
+
         for winner in result.winner_triplets:
             try:
                 link_result = calc.calculate_for_winner(
@@ -1179,14 +1183,25 @@ class HomingAlgorithm:
                     latitude_deg=mid_lat,
                 )
 
-                winner.snr_db = link_result.snr_db
+                snr = link_result.snr_db
+
+                # Filter unusable paths - negative SNR means path is not usable
+                if snr < MIN_USABLE_SNR_DB:
+                    logger.debug(f"Winner {winner.frequency_mhz:.1f}MHz rejected: "
+                                f"SNR {snr:.0f}dB below usable threshold")
+                    continue
+
+                winner.snr_db = snr
                 winner.signal_strength_dbm = link_result.signal_power_dbw + 30
                 winner.path_loss_db = link_result.total_path_loss_db
+                valid_winners.append(winner)
 
             except Exception as e:
                 logger.debug(f"SNR calculation failed for winner: {e}")
-                winner.snr_db = None
-                winner.signal_strength_dbm = None
-                winner.path_loss_db = None
+                # Don't include winners with failed SNR calculation
+                continue
+
+        # Replace winner list with only valid winners
+        result.winner_triplets[:] = valid_winners
 
         return result

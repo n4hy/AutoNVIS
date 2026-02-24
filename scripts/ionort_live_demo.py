@@ -448,8 +448,18 @@ class ControlPanel(QWidget):
         int_layout = QHBoxLayout()
         int_layout.addWidget(QLabel("Integrator:"))
         self.integrator = QComboBox()
-        self.integrator.addItems(["rk4", "abm", "rk45"])
-        self.integrator.setCurrentText("rk4")
+        # Order: fastest to slowest (abm > rk45 > rk4)
+        # Accuracy: rk45 (5th order) > rk4/abm (4th order)
+        self.integrator.addItem("abm", "abm")      # Fastest: 2 evals/step, 4th order
+        self.integrator.addItem("rk45", "rk45")    # Medium: 7 evals/step, 5th order (most accurate)
+        self.integrator.addItem("rk4", "rk4")      # Slow: 12 evals/step, 4th order
+        self.integrator.setCurrentIndex(0)  # Default to fastest (abm)
+        self.integrator.setToolTip(
+            "Integrator selection:\n"
+            "  abm  - Fastest (2 evals/step), 4th order\n"
+            "  rk45 - Medium (7 evals/step), 5th order (most accurate)\n"
+            "  rk4  - Slow (12 evals/step), 4th order with error tracking"
+        )
         int_layout.addWidget(self.integrator)
         int_layout.addStretch()
         opts_layout.addLayout(int_layout)
@@ -481,6 +491,18 @@ class ControlPanel(QWidget):
         workers_layout.addWidget(self.workers)
         workers_layout.addStretch()
         opts_layout.addLayout(workers_layout)
+
+        # Tolerance (landing distance tolerance in km)
+        tol_layout = QHBoxLayout()
+        tol_layout.addWidget(QLabel("Tolerance (km):"))
+        self.tolerance = QDoubleSpinBox()
+        self.tolerance.setRange(10, 500)
+        self.tolerance.setValue(100.0)
+        self.tolerance.setDecimals(0)
+        self.tolerance.setToolTip("Landing tolerance - how close ray must land to receiver (km)")
+        tol_layout.addWidget(self.tolerance)
+        tol_layout.addStretch()
+        opts_layout.addLayout(tol_layout)
 
         layout.addWidget(opts_group)
 
@@ -686,7 +708,7 @@ class ControlPanel(QWidget):
     def get_config(self) -> HomingConfig:
         """Get homing config from UI values."""
         return HomingConfig(
-            distance_tolerance_km=50.0,
+            distance_tolerance_km=self.tolerance.value(),
             use_distance_tolerance=True,
             trace_both_modes=self.trace_both_modes.isChecked(),
             store_ray_paths=self.store_paths.isChecked(),
@@ -1012,6 +1034,20 @@ class IONORTLiveWindow(QMainWindow):
         if self.last_result and self.last_result.winner_triplets:
             self._render_filtered_result()
 
+    # Button frequencies for mapping traces to buttons
+    BUTTON_FREQUENCIES = [2, 5, 8, 12, 15, 20, 25, 30]
+
+    def _get_nearest_button_freq(self, freq_mhz: float) -> int:
+        """Find the nearest button frequency for a given trace frequency."""
+        nearest = self.BUTTON_FREQUENCIES[0]
+        min_dist = abs(freq_mhz - nearest)
+        for btn_freq in self.BUTTON_FREQUENCIES[1:]:
+            dist = abs(freq_mhz - btn_freq)
+            if dist < min_dist:
+                min_dist = dist
+                nearest = btn_freq
+        return nearest
+
     def _render_filtered_result(self):
         """Re-render the last result with current frequency filters applied."""
         if not self.last_result:
@@ -1021,11 +1057,11 @@ class IONORTLiveWindow(QMainWindow):
         result = self.last_result
 
         # Filter winners based on excluded frequencies
+        # Map each trace to its nearest button, then check if that button is excluded
         filtered_winners = []
         for w in result.winner_triplets:
-            # Check if frequency is within 2.5 MHz of any excluded value
-            excluded = any(abs(w.frequency_mhz - ef) <= 2.5 for ef in self.excluded_frequencies)
-            if not excluded:
+            nearest_button = self._get_nearest_button_freq(w.frequency_mhz)
+            if nearest_button not in self.excluded_frequencies:
                 filtered_winners.append(w)
 
         self.log(f"Filtering: {len(result.winner_triplets)} total, {len(filtered_winners)} shown")
@@ -1046,13 +1082,8 @@ class IONORTLiveWindow(QMainWindow):
         self.viz_panel.geographic_widget.add_marker(tx_lat, tx_lon, tx_alt, '#ff4444', 150)
         self.viz_panel.geographic_widget.add_marker(rx_lat, rx_lon, rx_alt, '#44ff44', 150)
 
-        # Set frequency range for coloring
-        frequencies = [w.frequency_mhz for w in filtered_winners]
-        freq_min = min(frequencies)
-        freq_max = max(frequencies)
-        self.viz_panel.altitude_widget.set_frequency_range(freq_min, freq_max)
-
         # Re-add filtered ray paths
+        # Note: Color mapping uses fixed 2-30 MHz range (set in widget constants)
         paths_added = 0
         for w in filtered_winners:
             if w.ray_path and w.ray_path.states:
@@ -1065,7 +1096,7 @@ class IONORTLiveWindow(QMainWindow):
                     w.frequency_mhz, is_reflected, is_o_mode
                 )
                 self.viz_panel.geographic_widget.add_ray_path(
-                    positions, w.frequency_mhz, freq_min, freq_max
+                    positions, w.frequency_mhz
                 )
                 paths_added += 1
 
@@ -1091,14 +1122,13 @@ class IONORTLiveWindow(QMainWindow):
             config.step_km = self.step_km
         if hasattr(self, 'max_hops'):
             config.max_hops = self.max_hops
-        if hasattr(self, 'tolerance_km'):
-            config.distance_tolerance_km = self.tolerance_km
+        # Tolerance is now set directly from control_panel.get_config()
 
         tx_lat = self.control_panel.tx_lat.value()
         tx_lon = self.control_panel.tx_lon.value()
         rx_lat = self.control_panel.rx_lat.value()
         rx_lon = self.control_panel.rx_lon.value()
-        integrator = self.control_panel.integrator.currentText()
+        integrator = self.control_panel.integrator.currentData()
 
         # Log
         logger.info(f"Starting homing: ({tx_lat}, {tx_lon}) -> ({rx_lat}, {rx_lon})")
@@ -1195,7 +1225,17 @@ class IONORTLiveWindow(QMainWindow):
         self.statusBar().showMessage(msg)
 
     def _calculate_snr_for_result(self, result: HomingResult):
-        """Calculate SNR for all winners using link budget calculator."""
+        """Calculate SNR for all winners using physics-based link budget.
+
+        SNR is computed from first principles:
+        - Free space path loss (FSPL)
+        - D-layer absorption (ITU-R P.533)
+        - Ground reflection losses
+        - Atmospheric noise (ITU-R P.372)
+
+        Winners with invalid/uncomputable SNR are REMOVED from the result.
+        """
+        import numpy as np
         from src.raytracer.link_budget import (
             LinkBudgetCalculator,
             TransmitterConfig,
@@ -1212,56 +1252,129 @@ class IONORTLiveWindow(QMainWindow):
         rx_gain = self.control_panel.rx_antenna_gain.value()
         rx_bw = float(self.control_panel.rx_bandwidth.currentText())
 
-        # Get space weather from live data (if available)
-        xray_flux = 1e-6  # Default quiet sun
-        kp_index = 2.0    # Default quiet
+        self.log(f"Link Budget: TX={tx_power:.0f}W (+{tx_gain:.1f}dBi), RX={rx_gain:.1f}dBi, BW={rx_bw:.0f}Hz")
+
+        # Space weather
+        xray_flux = 1e-6
+        kp_index = 2.0
         if self.live_client and hasattr(self.live_client, 'state'):
             xray_flux = getattr(self.live_client.state, 'xray_flux', 1e-6)
             kp_index = getattr(self.live_client.state, 'kp_index', 2.0)
 
-        # Calculate midpoint for solar position
+        # Path geometry
         mid_lat = (result.tx_position[0] + result.rx_position[0]) / 2
         mid_lon = (result.tx_position[1] + result.rx_position[1]) / 2
+        gc_range = result.great_circle_range_km
 
         try:
             is_night = is_nighttime(mid_lat, mid_lon)
         except Exception:
             is_night = False
 
-        calc = LinkBudgetCalculator()
-
-        tx_config = TransmitterConfig(
-            power_watts=tx_power,
-            antenna=AntennaConfig(gain_dbi=tx_gain),
-        )
-        rx_config = ReceiverConfig(
-            antenna=AntennaConfig(gain_dbi=rx_gain),
-            bandwidth_hz=rx_bw,
-            noise_environment=NoiseEnvironment.RURAL,
-        )
-
         try:
             solar_zenith = calculate_solar_zenith_angle(mid_lat, mid_lon)
         except Exception:
             solar_zenith = 45.0
 
-        for winner in result.winner_triplets:
+        self.log(f"Path: {gc_range:.0f}km, Solar zenith={solar_zenith:.0f}°, night={is_night}")
+
+        calc = LinkBudgetCalculator()
+        tx_config = TransmitterConfig(power_watts=tx_power, antenna=AntennaConfig(gain_dbi=tx_gain))
+        rx_config = ReceiverConfig(antenna=AntennaConfig(gain_dbi=rx_gain), bandwidth_hz=rx_bw,
+                                   noise_environment=NoiseEnvironment.RURAL)
+
+        # Process winners - REMOVE any that fail SNR calculation
+        valid_winners = []
+        invalid_count = 0
+
+        for idx, winner in enumerate(result.winner_triplets):
+            # Extract and validate physical parameters
+            freq = winner.frequency_mhz
+            hop_count = max(winner.hop_count, 1)
+
+            # Reflection height from ray path (actual physics)
+            h = winner.reflection_height_km
+            if h <= 0 and winner.ray_path and winner.ray_path.states:
+                h = max(s.altitude() for s in winner.ray_path.states)
+            if h <= 0:
+                # Cannot compute without reflection height - skip this winner
+                self.log(f"  #{idx}: {freq:.1f}MHz SKIPPED - no reflection height data")
+                invalid_count += 1
+                continue
+
+            # Ground range from ray path or result
+            ground_range = winner.ground_range_km
+            if ground_range <= 0 and winner.ray_path and winner.ray_path.states:
+                states = winner.ray_path.states
+                if len(states) >= 2:
+                    lat1, lon1, _ = states[0].lat_lon_alt()
+                    lat2, lon2, _ = states[-1].lat_lon_alt()
+                    dlat = np.radians(lat2 - lat1)
+                    dlon = np.radians(lon2 - lon1)
+                    a = np.sin(dlat/2)**2 + np.cos(np.radians(lat1)) * np.cos(np.radians(lat2)) * np.sin(dlon/2)**2
+                    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
+                    ground_range = 6371.0 * c
+            if ground_range <= 0:
+                ground_range = gc_range
+            if ground_range <= 0:
+                self.log(f"  #{idx}: {freq:.1f}MHz SKIPPED - no range data")
+                invalid_count += 1
+                continue
+
+            # Calculate path length from geometry (physics)
+            hop_range = ground_range / hop_count
+            path_per_hop = 2 * np.sqrt((hop_range/2)**2 + h**2)
+            path_length = path_per_hop * hop_count
+
+            # Compute SNR using physics-based link budget
             try:
-                link_result = calc.calculate_for_winner(
-                    winner,
-                    tx_config=tx_config,
-                    rx_config=rx_config,
+                link_result = calc.calculate(
+                    frequency_mhz=freq,
+                    path_length_km=path_length,
+                    hop_count=hop_count,
+                    reflection_height_km=h,
+                    solar_zenith_angle_deg=solar_zenith,
                     xray_flux=xray_flux,
                     kp_index=kp_index,
-                    solar_zenith_angle_deg=solar_zenith,
-                    is_night=is_night,
+                    tx_config=tx_config,
+                    rx_config=rx_config,
                     latitude_deg=mid_lat,
+                    is_night=is_night,
                 )
-                winner.snr_db = link_result.snr_db
+
+                snr = link_result.snr_db
+
+                # Validate: SNR must be a real number from physics
+                if np.isnan(snr) or np.isinf(snr):
+                    raise ValueError(f"Non-physical SNR: {snr}")
+
+                # Filter: SNR must be usable for practical communication
+                # Minimum 0 dB for any mode (FT8 can work at -20, but we want usable paths)
+                MIN_USABLE_SNR_DB = 0.0
+                if snr < MIN_USABLE_SNR_DB:
+                    self.log(f"  #{idx}: {freq:.1f}MHz REJECTED - SNR {snr:.0f}dB below usable threshold")
+                    invalid_count += 1
+                    continue
+
+                winner.snr_db = snr
                 winner.signal_strength_dbm = link_result.signal_power_dbw + 30
                 winner.path_loss_db = link_result.total_path_loss_db
+                valid_winners.append(winner)
+
+                if idx < 5:
+                    self.log(f"  #{idx}: {freq:.1f}MHz path={path_length:.0f}km h={h:.0f}km "
+                             f"loss={link_result.total_path_loss_db:.0f}dB SNR={snr:.0f}dB")
+
             except Exception as e:
-                logger.debug(f"SNR calc failed: {e}")
+                self.log(f"  #{idx}: {freq:.1f}MHz FAILED: {e}")
+                invalid_count += 1
+                continue
+
+        # Replace winner list with only valid winners
+        result.winner_triplets[:] = valid_winners
+
+        if invalid_count > 0:
+            self.log(f"Removed {invalid_count} winners with uncomputable SNR")
 
     def _on_cancelled(self):
         """Handle homing cancellation."""
@@ -1279,6 +1392,10 @@ class IONORTLiveWindow(QMainWindow):
     def closeEvent(self, event):
         """Handle window close - ensure all workers are killed."""
         logger.info("Window closing - cleaning up...")
+
+        # Stop visualization timers
+        if hasattr(self, 'viz_panel') and self.viz_panel is not None:
+            self.viz_panel.cleanup()
 
         # Stop live data client
         self._stop_live_client()
@@ -1422,7 +1539,6 @@ def main():
     # Store runtime params for use in homing
     window.step_km = args.step_km
     window.max_hops = args.max_hops
-    window.tolerance_km = args.tolerance
 
     # Apply command line args to UI
     window.control_panel.tx_lat.setValue(tx_lat)
@@ -1439,6 +1555,9 @@ def main():
     # Set workers (allow up to 64 in UI, default to num_workers)
     window.control_panel.workers.setRange(1, 64)
     window.control_panel.workers.setValue(num_workers)
+
+    # Set tolerance from command line
+    window.control_panel.tolerance.setValue(args.tolerance)
 
     # NVIS mode adjustments
     if args.nvis:

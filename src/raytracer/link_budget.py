@@ -647,21 +647,55 @@ class LinkBudgetCalculator:
 
         Convenience method that extracts parameters from WinnerTriplet.
         """
-        # Estimate path length from ground range and reflection height
-        # Simple geometric model: path ≈ 2 * sqrt(range² + 4*h²) per hop
+        # Validate and extract parameters
         ground_range = winner.ground_range_km
         h = winner.reflection_height_km
+        hop_count = max(winner.hop_count, 1)  # Ensure at least 1 hop
 
-        # Approximate slant path length per hop
-        hop_range = ground_range / max(winner.hop_count, 1)
+        # Validate ground_range - must be positive
+        if ground_range <= 0:
+            # Estimate from ray path if available
+            if hasattr(winner, 'ray_path') and winner.ray_path and winner.ray_path.states:
+                # Calculate from actual path positions
+                states = winner.ray_path.states
+                if len(states) >= 2:
+                    start = states[0]
+                    end = states[-1]
+                    # Haversine distance
+                    lat1, lon1, _ = start.lat_lon_alt()
+                    lat2, lon2, _ = end.lat_lon_alt()
+                    dlat = np.radians(lat2 - lat1)
+                    dlon = np.radians(lon2 - lon1)
+                    a = np.sin(dlat/2)**2 + np.cos(np.radians(lat1)) * np.cos(np.radians(lat2)) * np.sin(dlon/2)**2
+                    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
+                    ground_range = 6371.0 * c
+            # If still zero, use a reasonable default based on elevation
+            if ground_range <= 0:
+                # Higher elevation = shorter range (NVIS-like)
+                # Lower elevation = longer range
+                ground_range = max(100, 1000 * (1 - winner.elevation_deg / 90))
+                logger.warning(f"Using estimated ground_range={ground_range:.0f}km for {winner.frequency_mhz:.1f}MHz")
+
+        # Validate reflection height
+        if h <= 0:
+            h = 300.0  # Default F2 layer height
+            logger.warning(f"Using default reflection height h={h:.0f}km")
+
+        # Estimate path length from ground range and reflection height
+        # Simple geometric model: path ≈ 2 * sqrt((range/2)² + h²) per hop
+        hop_range = ground_range / hop_count
         path_per_hop = 2 * np.sqrt((hop_range/2)**2 + h**2)
-        path_length = path_per_hop * winner.hop_count
+        path_length = path_per_hop * hop_count
+
+        # Ensure path_length is reasonable
+        if path_length < 100:
+            path_length = max(path_length, 2 * h)  # At minimum, vertical path
 
         return self.calculate(
             frequency_mhz=winner.frequency_mhz,
             path_length_km=path_length,
-            hop_count=winner.hop_count,
-            reflection_height_km=winner.reflection_height_km,
+            hop_count=hop_count,
+            reflection_height_km=h,
             solar_zenith_angle_deg=solar_zenith_angle_deg,
             xray_flux=xray_flux,
             kp_index=kp_index,
