@@ -498,6 +498,17 @@ class ControlPanel(QWidget):
         workers_layout.addStretch()
         opts_layout.addLayout(workers_layout)
 
+        # Max Hops
+        hops_layout = QHBoxLayout()
+        hops_layout.addWidget(QLabel("Max Hops:"))
+        self.max_hops = QSpinBox()
+        self.max_hops.setRange(1, 10)
+        self.max_hops.setValue(3)
+        self.max_hops.setToolTip("Maximum number of ground reflections (1-10)")
+        hops_layout.addWidget(self.max_hops)
+        hops_layout.addStretch()
+        opts_layout.addLayout(hops_layout)
+
         # Tolerance (landing distance tolerance in km)
         tol_layout = QHBoxLayout()
         tol_layout.addWidget(QLabel("Tolerance (km):"))
@@ -732,6 +743,7 @@ class ControlPanel(QWidget):
             trace_both_modes=self.trace_both_modes.isChecked(),
             store_ray_paths=self.store_paths.isChecked(),
             max_workers=self.workers.value(),
+            max_hops=self.max_hops.value(),
         )
 
     def get_ionosphere(self) -> IonosphericModel:
@@ -1023,6 +1035,9 @@ class IONORTLiveWindow(QMainWindow):
         """Handle live state update."""
         self.control_panel.update_from_live_state(state)
 
+        # Update ionospheric conditions overlay on the globe
+        self.viz_panel.update_ionospheric_conditions(state)
+
         # Update status bar with live data info
         source = state.source_station or "Default"
         self.statusBar().showMessage(
@@ -1139,9 +1154,7 @@ class IONORTLiveWindow(QMainWindow):
         # Apply runtime params from command line (stored in window)
         if hasattr(self, 'step_km'):
             config.step_km = self.step_km
-        if hasattr(self, 'max_hops'):
-            config.max_hops = self.max_hops
-        # Tolerance is now set directly from control_panel.get_config()
+        # max_hops and tolerance are now set directly from control_panel.get_config()
 
         tx_lat = self.control_panel.tx_lat.value()
         tx_lon = self.control_panel.tx_lon.value()
@@ -1571,7 +1584,6 @@ def main():
 
     # Store runtime params for use in homing
     window.step_km = args.step_km
-    window.max_hops = args.max_hops
 
     # Apply command line args to UI
     window.control_panel.tx_lat.setValue(tx_lat)
@@ -1593,6 +1605,9 @@ def main():
 
     # Set tolerance from command line
     window.control_panel.tolerance.setValue(args.tolerance)
+
+    # Set max hops from command line
+    window.control_panel.max_hops.setValue(args.max_hops)
 
     # Set SNR cutoff from command line (clamp to valid range)
     snr_cutoff = max(-20.0, min(60.0, args.snr_cutoff))

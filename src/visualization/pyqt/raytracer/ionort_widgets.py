@@ -531,6 +531,250 @@ class AltitudeGroundRangeWidget(QWidget):
         self.info_label.setText(text)
 
 
+class IonoConditionsOverlay(QWidget):
+    """
+    Semi-transparent overlay showing current ionospheric conditions.
+
+    Displays live readings from ionosonde network:
+    - foF2, hmF2 (primary ionospheric parameters)
+    - Kp index (geomagnetic activity)
+    - Space weather scales (R, G, S)
+    - Data source and freshness
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        self.setFixedWidth(200)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+
+        # Create a frame with semi-transparent background
+        self.frame = QFrame()
+        self.frame.setStyleSheet("""
+            QFrame {
+                background-color: rgba(20, 20, 25, 200);
+                border: 1px solid rgba(100, 100, 120, 150);
+                border-radius: 6px;
+            }
+            QLabel {
+                background: transparent;
+                border: none;
+            }
+        """)
+        frame_layout = QVBoxLayout(self.frame)
+        frame_layout.setContentsMargins(10, 8, 10, 8)
+        frame_layout.setSpacing(3)
+
+        # Title
+        title = QLabel("IONOSPHERIC CONDITIONS")
+        title.setStyleSheet("color: #88ccff; font-weight: bold; font-size: 10px;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        frame_layout.addWidget(title)
+
+        # Separator
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("background-color: rgba(100, 100, 120, 100);")
+        sep.setFixedHeight(1)
+        frame_layout.addWidget(sep)
+
+        # Primary parameters section
+        params_grid = QGridLayout()
+        params_grid.setSpacing(2)
+
+        # foF2
+        lbl = QLabel("foF2:")
+        lbl.setStyleSheet("color: #888888; font-size: 11px;")
+        params_grid.addWidget(lbl, 0, 0)
+        self.foF2_label = QLabel("--.- MHz")
+        self.foF2_label.setStyleSheet("color: #44ff88; font-size: 11px; font-weight: bold; font-family: monospace;")
+        self.foF2_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        params_grid.addWidget(self.foF2_label, 0, 1)
+
+        # hmF2
+        lbl = QLabel("hmF2:")
+        lbl.setStyleSheet("color: #888888; font-size: 11px;")
+        params_grid.addWidget(lbl, 1, 0)
+        self.hmF2_label = QLabel("--- km")
+        self.hmF2_label.setStyleSheet("color: #44ff88; font-size: 11px; font-weight: bold; font-family: monospace;")
+        self.hmF2_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        params_grid.addWidget(self.hmF2_label, 1, 1)
+
+        # MUF3000
+        lbl = QLabel("MUF₃₀₀₀:")
+        lbl.setStyleSheet("color: #888888; font-size: 11px;")
+        params_grid.addWidget(lbl, 2, 0)
+        self.muf_label = QLabel("--.- MHz")
+        self.muf_label.setStyleSheet("color: #ffcc44; font-size: 11px; font-weight: bold; font-family: monospace;")
+        self.muf_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        params_grid.addWidget(self.muf_label, 2, 1)
+
+        frame_layout.addLayout(params_grid)
+
+        # Space weather section
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setStyleSheet("background-color: rgba(100, 100, 120, 100);")
+        sep2.setFixedHeight(1)
+        frame_layout.addWidget(sep2)
+
+        wx_grid = QGridLayout()
+        wx_grid.setSpacing(2)
+
+        # Kp index
+        lbl = QLabel("Kp:")
+        lbl.setStyleSheet("color: #888888; font-size: 11px;")
+        wx_grid.addWidget(lbl, 0, 0)
+        self.kp_label = QLabel("-.-")
+        self.kp_label.setStyleSheet("color: #44ff88; font-size: 11px; font-weight: bold; font-family: monospace;")
+        self.kp_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        wx_grid.addWidget(self.kp_label, 0, 1)
+
+        # R-scale (X-ray)
+        lbl = QLabel("R-scale:")
+        lbl.setStyleSheet("color: #888888; font-size: 11px;")
+        wx_grid.addWidget(lbl, 1, 0)
+        self.r_scale_label = QLabel("R0")
+        self.r_scale_label.setStyleSheet("color: #44ff88; font-size: 11px; font-weight: bold; font-family: monospace;")
+        self.r_scale_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        wx_grid.addWidget(self.r_scale_label, 1, 1)
+
+        # G-scale (Geomagnetic)
+        lbl = QLabel("G-scale:")
+        lbl.setStyleSheet("color: #888888; font-size: 11px;")
+        wx_grid.addWidget(lbl, 2, 0)
+        self.g_scale_label = QLabel("G0")
+        self.g_scale_label.setStyleSheet("color: #44ff88; font-size: 11px; font-weight: bold; font-family: monospace;")
+        self.g_scale_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        wx_grid.addWidget(self.g_scale_label, 2, 1)
+
+        # D-layer absorption
+        lbl = QLabel("D-abs:")
+        lbl.setStyleSheet("color: #888888; font-size: 11px;")
+        wx_grid.addWidget(lbl, 3, 0)
+        self.absorption_label = QLabel("0.0 dB")
+        self.absorption_label.setStyleSheet("color: #44ff88; font-size: 11px; font-weight: bold; font-family: monospace;")
+        self.absorption_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        wx_grid.addWidget(self.absorption_label, 3, 1)
+
+        frame_layout.addLayout(wx_grid)
+
+        # Source/freshness section
+        sep3 = QFrame()
+        sep3.setFrameShape(QFrame.Shape.HLine)
+        sep3.setStyleSheet("background-color: rgba(100, 100, 120, 100);")
+        sep3.setFixedHeight(1)
+        frame_layout.addWidget(sep3)
+
+        self.source_label = QLabel("Source: ---")
+        self.source_label.setStyleSheet("color: #666666; font-size: 10px;")
+        frame_layout.addWidget(self.source_label)
+
+        self.age_label = QLabel("Age: ---")
+        self.age_label.setStyleSheet("color: #666666; font-size: 10px;")
+        frame_layout.addWidget(self.age_label)
+
+        layout.addWidget(self.frame)
+        self.adjustSize()
+
+    def update_from_state(self, state):
+        """
+        Update display from LiveIonosphericState.
+
+        Args:
+            state: LiveIonosphericState object
+        """
+        # Primary parameters
+        self.foF2_label.setText(f"{state.foF2:.2f} MHz")
+        self.hmF2_label.setText(f"{state.hmF2:.0f} km")
+
+        if state.MUF3000:
+            self.muf_label.setText(f"{state.MUF3000:.1f} MHz")
+        else:
+            self.muf_label.setText("N/A")
+
+        # Space weather
+        self.kp_label.setText(f"{state.kp_index:.1f}")
+        self._color_kp(state.kp_index)
+
+        self.r_scale_label.setText(f"R{state.r_scale}")
+        self._color_scale(self.r_scale_label, state.r_scale)
+
+        self.g_scale_label.setText(f"G{state.g_scale}")
+        self._color_scale(self.g_scale_label, state.g_scale)
+
+        self.absorption_label.setText(f"{state.d_layer_absorption_db:.1f} dB")
+        self._color_absorption(state.d_layer_absorption_db)
+
+        # Source info
+        source = state.source_station or "Default"
+        dist = state.source_distance_km
+        if dist > 0:
+            self.source_label.setText(f"Source: {source} ({dist:.0f} km)")
+        else:
+            self.source_label.setText(f"Source: {source}")
+
+        # Age with color coding
+        age = state.data_age_seconds
+        if age < 60:
+            age_text = f"Age: {age:.0f}s"
+            age_color = "#44ff88"  # Fresh - green
+        elif age < 1800:
+            age_text = f"Age: {age/60:.0f}m"
+            age_color = "#88ff88"  # OK - light green
+        elif age < 3600:
+            age_text = f"Age: {age/60:.0f}m"
+            age_color = "#ffcc44"  # Getting stale - yellow
+        else:
+            age_text = f"Age: {age/3600:.1f}h"
+            age_color = "#ff8844"  # Stale - orange
+
+        self.age_label.setText(age_text)
+        self.age_label.setStyleSheet(f"color: {age_color}; font-size: 10px;")
+
+    def _color_kp(self, kp: float):
+        """Color Kp label based on activity level."""
+        if kp < 4:
+            color = "#44ff88"  # Quiet - green
+        elif kp < 5:
+            color = "#ffcc44"  # Unsettled - yellow
+        elif kp < 6:
+            color = "#ff8844"  # Active - orange
+        else:
+            color = "#ff4444"  # Storm - red
+        self.kp_label.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: bold; font-family: monospace;")
+
+    def _color_scale(self, label: QLabel, scale: int):
+        """Color R/G/S scale label based on level."""
+        if scale == 0:
+            color = "#44ff88"  # None - green
+        elif scale <= 2:
+            color = "#ffcc44"  # Minor/Moderate - yellow
+        elif scale <= 3:
+            color = "#ff8844"  # Strong - orange
+        else:
+            color = "#ff4444"  # Severe/Extreme - red
+        label.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: bold; font-family: monospace;")
+
+    def _color_absorption(self, db: float):
+        """Color absorption label based on level."""
+        if db < 5:
+            color = "#44ff88"  # Low - green
+        elif db < 15:
+            color = "#ffcc44"  # Moderate - yellow
+        elif db < 30:
+            color = "#ff8844"  # High - orange
+        else:
+            color = "#ff4444"  # Severe - red
+        self.absorption_label.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: bold; font-family: monospace;")
+
+
 class Geographic3DWidget(QWidget):
     """
     3D geographic visualization of ray paths on Earth sphere.
@@ -542,6 +786,7 @@ class Geographic3DWidget(QWidget):
     - Tx marker (red star), Rx marker (green diamond)
     - Interactive rotation and zoom
     - Camera position display
+    - Ionospheric conditions overlay (bottom left)
 
     Like IONORT Figures 7, 8 perspective.
 
@@ -583,20 +828,28 @@ class Geographic3DWidget(QWidget):
             fallback.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(fallback)
             self.gl_widget = None
+            self.gl_container = None
+            self.iono_overlay = None
             self.boundaries_checkbox = None
             self.camera_label = None
             return
 
+        # Create container for GL widget and overlay
+        self.gl_container = QWidget()
+        self.gl_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.gl_container.setMinimumHeight(300)
+
         # Create OpenGL widget - full Earth view
-        self.gl_widget = gl.GLViewWidget()
+        self.gl_widget = gl.GLViewWidget(self.gl_container)
         self.gl_widget.setBackgroundColor('#1e1e1e')
         self.gl_widget.setCameraPosition(distance=25000, elevation=20, azimuth=-100)
 
-        # Make GL widget expand to fill available space
-        self.gl_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.gl_widget.setMinimumHeight(300)
+        # Create ionospheric conditions overlay (positioned in bottom-left)
+        self.iono_overlay = IonoConditionsOverlay(self.gl_container)
+        self.iono_overlay.move(10, 10)  # Initial position, will be updated on resize
+        self.iono_overlay.raise_()  # Ensure overlay is on top
 
-        layout.addWidget(self.gl_widget, stretch=1)  # stretch=1 to fill space
+        layout.addWidget(self.gl_container, stretch=1)  # stretch=1 to fill space
 
         # Bottom controls row
         controls = QHBoxLayout()
@@ -632,6 +885,31 @@ class Geographic3DWidget(QWidget):
         self.camera_timer = QTimer()
         self.camera_timer.timeout.connect(self._update_camera_display)
         self.camera_timer.start(100)  # Update 10x per second
+
+        # Install event filter on container to handle resize
+        self.gl_container.resizeEvent = self._on_container_resize
+
+    def _on_container_resize(self, event):
+        """Handle container resize to position GL widget and overlay."""
+        if hasattr(self, 'gl_widget') and self.gl_widget:
+            # Make GL widget fill the container
+            self.gl_widget.setGeometry(0, 0, event.size().width(), event.size().height())
+
+        if hasattr(self, 'iono_overlay') and self.iono_overlay:
+            # Position overlay in bottom-left corner
+            overlay_height = self.iono_overlay.sizeHint().height()
+            self.iono_overlay.move(10, event.size().height() - overlay_height - 10)
+            self.iono_overlay.raise_()
+
+    def update_ionospheric_conditions(self, state):
+        """
+        Update the ionospheric conditions overlay with live data.
+
+        Args:
+            state: LiveIonosphericState object from live_iono_client
+        """
+        if hasattr(self, 'iono_overlay') and self.iono_overlay:
+            self.iono_overlay.update_from_state(state)
 
     def _add_earth(self):
         """Add Earth sphere mesh."""
@@ -891,8 +1169,8 @@ class Geographic3DWidget(QWidget):
             self.camera_label.setText(
                 f"Az: {azimuth:6.1f}°  El: {elevation:5.1f}°  Dist: {distance/1000:5.1f}k km"
             )
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError, KeyError):
+            pass  # Widget not ready or being destroyed
 
     def clear(self):
         """Clear all ray paths and markers."""
@@ -1512,6 +1790,15 @@ class IONORTVisualizationPanel(QWidget):
         # Set info
         self.altitude_widget.set_info(f"Range: {result.great_circle_range_km:.0f} km")
         self.ionogram_widget.set_info(f"MUF: {result.muf:.1f} MHz, LUF: {result.luf:.1f} MHz")
+
+    def update_ionospheric_conditions(self, state):
+        """
+        Update the ionospheric conditions overlay with live data.
+
+        Args:
+            state: LiveIonosphericState object from live_iono_client
+        """
+        self.geographic_widget.update_ionospheric_conditions(state)
 
     def cleanup(self):
         """Stop all timers and release resources. Call before destroying widget."""
