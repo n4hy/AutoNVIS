@@ -2,7 +2,7 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
-**Version:** 0.3.4 | **Status:** ✅ Production Ready (Filter Core + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Live Dashboard + Multi-Hop + Link Budget) | **Last Updated:** February 24, 2026
+**Version:** 0.3.5 | **Status:** ✅ Production Ready (Filter Core + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Live Dashboard + Multi-Hop + Link Budget + Web Ray Tracer Dashboard) | **Last Updated:** March 9, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-73%25%20passing-yellow)]()
@@ -30,6 +30,7 @@
   - [PyQt TEC Display](#6-pyqt-tec-display-application)
   - [PyQt HF Propagation Display](#7-pyqt-hf-propagation-display-application)
 - [PyQt Ray Tracer Display](#8-pyqt-ray-tracer-display-application)
+- [Web Dashboard Ray Tracer](#9-web-dashboard-ray-tracer)
 - [IONORT-Style Features](#10-ionort-style-features)
   - [Python-C++ Integration Layer](#11-python-c-integration-layer)
 - [Key Innovations](#key-innovations)
@@ -63,7 +64,9 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 
 **Result**: Continuous, accurate NVIS frequency planning during Solar Cycle 25 volatility.
 
-**New in v0.3.4**: Full command line control with `--snr-cutoff` (-20 to 60 dB), `--elev-min/max`, and `--tolerance`. SNR filtering removes unusable paths from winners. Use `--help` for all options.
+**New in v0.3.5**: Web-based PHaRLAP Ray Tracer Dashboard with 10 REST API endpoints, real-time visualizations (ray paths, coverage maps, ionograms), winner triplets table, and WebSocket support for live updates. Access at `/raytracer` page.
+
+**v0.3.4**: Full command line control with `--snr-cutoff` (-20 to 60 dB), `--elev-min/max`, and `--tolerance`. SNR filtering removes unusable paths from winners. Use `--help` for all options.
 
 **v0.3.2**: Multi-hop ray tracing for long-distance paths (4000+ km), comprehensive link budget calculator with SNR/path loss/D-layer absorption, real-time GIRO ionosonde client, and enhanced live dashboard with diagnostic console.
 
@@ -81,6 +84,7 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 ✅ **Link Budget Calculator** - SNR, path loss, D-layer absorption, ITU-R P.372 noise
 ✅ **Interactive Frequency Filters** - Click frequency buttons to show/hide paths instantly
 ✅ **Professional Visualizations** - Altitude/Range, 3D Geographic, Synthetic Ionogram
+✅ **Web Ray Tracer Dashboard** - Real-time browser-based PHaRLAP visualization with REST API
 ✅ **Rigorously Tested** - 284 brutal tests, 78% passing (222/284)
 ✅ **Well Documented** - 6,000+ lines of technical documentation
 
@@ -99,7 +103,7 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 
 ### Quick Numbers
 
-- **16,500** lines of production code (C++/Python)
+- **24,000** lines of production code (C++/Python)
 - **4,500** lines of test code (284 brutal tests)
 - **222/284** tests passing (78% pass rate)
 - **0** filter divergences in validation
@@ -107,8 +111,9 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 - **~6 min** per filter cycle (full grid)
 - **2 GB** RAM usage (production grid)
 - **3 integrators** (RK4, Adams-Bashforth, RK45 Dormand-Prince)
-- **3 visualizations** (Altitude/Range, 3D Geographic, Ionogram)
-- **3.5 months** development time (Phases 1-12)
+- **4 visualizations** (Altitude/Range, 3D Geographic, Ionogram, Web Dashboard)
+- **10 REST endpoints** for raytracer web API
+- **3.5 months** development time (Phases 1-12a)
 
 ---
 
@@ -222,6 +227,17 @@ python3 demo_standalone.py
 - MUF/LUF/FOT automatic calculation
 - 51 unit tests for integrators and homing
 - Status: ✅ Complete (see `IONORT.md`)
+
+**Phase 12a: Web Dashboard Ray Tracer** ✅ **COMPLETE**
+- FastAPI REST endpoints for raytracer data (10 endpoints)
+- Thread-safe state management with raytracer lock
+- Real-time visualizations: ray paths, coverage maps, ionograms
+- Winner triplets table with filtering and sorting
+- Link budget analysis chart
+- MUF/LUF/FOT history time series
+- WebSocket support for live updates
+- Dark theme UI with O-Mode/X-Mode color coding
+- Status: ✅ Complete (March 2026)
 
 ⏸️ **Pending Tasks:**
 - Fix remaining test failures (62 tests, mostly environmental)
@@ -759,6 +775,164 @@ All three displays can run simultaneously:
 No port conflicts - each operates independently.
 
 **Status**: ✅ Complete and operational
+
+### 9. Web Dashboard Ray Tracer
+
+Real-time web-based PHaRLAP ray tracing dashboard integrated into the AutoNVIS web interface. Provides comprehensive visualization of ray tracing results, winner triplets, and link budget analysis.
+
+**What It Shows**:
+- **Current Frequencies Card**: LUF/MUF/FOT stat cards with color-coded values
+  - LUF (Lowest Usable Frequency) - Yellow/Gold accent
+  - MUF (Maximum Usable Frequency) - Red accent
+  - FOT (Frequency of Optimum Traffic) - Green accent
+- **Ray Path Cross-Section**: Altitude vs ground range visualization with ionospheric layer shading
+  - O-Mode rays: DeepSkyBlue (#00BFFF)
+  - X-Mode rays: Coral (#FF6B6B)
+  - Ionosphere shading: Cornflower blue (transparent)
+  - Ground line: Forest green
+- **Coverage Map**: Leaflet.js map showing winner triplet landing points
+  - Color-coded markers by propagation mode and SNR
+  - Dark theme tiles with appropriate filtering
+- **Synthetic Ionogram**: Group delay vs frequency plot
+  - O-mode and X-mode traces
+  - MUF/LUF vertical markers
+- **MUF/LUF/FOT History**: 24-hour time series with configurable range (6/12/24/48 hours)
+- **Winner Triplets Table**: Filterable/sortable table with all propagation paths
+  - Frequency, elevation, azimuth, delay, range
+  - Mode badges (O-Mode/X-Mode with color coding)
+  - SNR with quality indicators (excellent/good/marginal/poor)
+  - Hop count and reflection height
+- **Link Budget Chart**: SNR and path loss breakdown by frequency
+
+**Architecture**:
+```
+PHaRLAP Ray Tracer (Python)
+        ↓ Homing results + winner triplets
+State Manager (thread-safe storage)
+        ↓
+FastAPI REST Endpoints
+        ↓ JSON
+JavaScript Dashboard
+        ↓ Plotly.js + Leaflet.js
+Web Browser
+```
+
+**Quick Start**:
+```bash
+# Start the dashboard
+python -m src.output.dashboard.main
+
+# Navigate to Ray Tracer page
+http://localhost:8000/raytracer
+
+# Or use the API directly
+curl http://localhost:8000/api/raytracer/homing/latest
+curl http://localhost:8000/api/raytracer/winners/latest
+```
+
+**API Endpoints**:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/raytracer/homing/latest` | GET | Latest homing algorithm result |
+| `/api/raytracer/winners/latest` | GET | Latest winner triplets with SNR, mode, hops |
+| `/api/raytracer/winners/by_frequency` | GET | Filter winners by frequency range |
+| `/api/raytracer/ray_paths` | GET | Ray path data for cross-section visualization |
+| `/api/raytracer/frequencies/current` | GET | Current MUF/LUF/FOT from raytracer |
+| `/api/raytracer/frequencies/history` | GET | MUF/LUF/FOT time series (configurable hours) |
+| `/api/raytracer/ionogram/latest` | GET | Synthetic ionogram data |
+| `/api/raytracer/link_budget` | GET | SNR and path loss breakdown |
+| `/api/raytracer/coverage_map` | GET | Winner triplets for geographic display |
+| `/api/raytracer/statistics` | GET | Raytracer performance statistics |
+
+**Example API Response** (`/api/raytracer/frequencies/current`):
+```json
+{
+  "muf_mhz": 12.5,
+  "luf_mhz": 4.2,
+  "fot_mhz": 10.6,
+  "timestamp": "2026-03-09T14:30:00Z",
+  "tx_location": {"lat": 40.0, "lon": -105.0},
+  "rx_location": {"lat": 42.0, "lon": -100.0}
+}
+```
+
+**WebSocket Support**:
+The dashboard supports real-time updates via WebSocket:
+```javascript
+// Connect to WebSocket
+const ws = new WebSocket('ws://localhost:8000/ws');
+
+// Handle raytracer updates
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === 'raytracer_update') {
+        updateRaytracerDisplay(data.payload);
+    }
+};
+```
+
+**Winner Triplet Data Structure**:
+```json
+{
+  "frequency_mhz": 7.2,
+  "elevation_deg": 75.5,
+  "azimuth_deg": 45.0,
+  "group_delay_ms": 2.8,
+  "ground_range_km": 450.0,
+  "landing_lat": 42.1,
+  "landing_lon": -99.8,
+  "landing_error_km": 12.5,
+  "mode": "O",
+  "reflection_height_km": 280.0,
+  "hop_count": 1,
+  "snr_db": 18.5,
+  "signal_strength_dbm": -85.2,
+  "path_loss_db": 125.3
+}
+```
+
+**Installation Requirements**:
+```bash
+# Python dependencies (in requirements.txt)
+pip install fastapi uvicorn websockets jinja2 aiohttp
+
+# Frontend dependencies (served from CDN)
+# - Plotly.js for charts
+# - Leaflet.js for maps
+# - Font Awesome for icons
+```
+
+**Components**:
+- `src/output/dashboard/backend/raytracer_api.py` - FastAPI router (273 LOC)
+- `src/output/dashboard/backend/state_manager.py` - Thread-safe state storage (extended)
+- `src/output/dashboard/templates/raytracer.html` - Jinja2 template (148 lines)
+- `src/output/dashboard/static/js/raytracer.js` - Visualization JavaScript (815 LOC)
+- `src/output/dashboard/static/css/raytracer.css` - Page-specific styles (292 lines)
+- `src/output/dashboard/static/js/common/api_client.js` - API client (extended)
+
+**Dark Theme Color Scheme**:
+| Element | Color | Hex |
+|---------|-------|-----|
+| O-Mode rays | DeepSkyBlue | #00BFFF |
+| X-Mode rays | Coral | #FF6B6B |
+| Ionosphere shading | Cornflower blue | rgba(100, 149, 237, 0.2) |
+| Ground line | Forest green | #228B22 |
+| LUF card accent | Yellow/Gold | #FFD700 |
+| MUF card accent | Red | #F44336 |
+| FOT card accent | Green | #4CAF50 |
+| Background | Dark gray | #1e1e1e |
+| Card background | Darker gray | #252525 |
+
+**SNR Quality Indicators**:
+| SNR Range | Quality | Color |
+|-----------|---------|-------|
+| ≥20 dB | Excellent | Green (#4CAF50) |
+| 10-20 dB | Good | Light green (#8BC34A) |
+| 0-10 dB | Marginal | Orange (#FF9800) |
+| <0 dB | Poor | Red (#F44336) |
+
+**Status**: ✅ Complete and operational (added March 2026)
 
 ### 10. IONORT-Style Features
 
@@ -1816,6 +1990,7 @@ stats = gnss_client.statistics
 - ✅ **Feb 14, 2026**: Comprehensive test suite complete (233 tests)
 - ✅ **Feb 14, 2026**: Dashboard & RabbitMQ vhost support complete
 - ✅ **Feb 16, 2026**: PyQt TEC Display and Space Weather Display applications complete
+- ✅ **Mar 9, 2026**: Web Dashboard Ray Tracer complete (10 REST endpoints, visualizations)
 - 🔄 **Feb-Mar 2026**: Test failure resolution (ongoing)
 - 🔄 **Mar 2026**: Ionosonde integration (planned)
 - 🔄 **Apr 2026**: Historical validation (planned)
@@ -1885,6 +2060,18 @@ stats = gnss_client.statistics
   - Quality control thresholds
 
 ### API Documentation
+
+**Web Dashboard Ray Tracer API** (see `src/output/dashboard/backend/raytracer_api.py`):
+- `GET /api/raytracer/homing/latest` - Latest homing algorithm result
+- `GET /api/raytracer/winners/latest` - Winner triplets with SNR, mode, hops
+- `GET /api/raytracer/winners/by_frequency` - Filter winners by frequency range
+- `GET /api/raytracer/ray_paths` - Ray path data for visualization
+- `GET /api/raytracer/frequencies/current` - Current MUF/LUF/FOT
+- `GET /api/raytracer/frequencies/history` - MUF/LUF/FOT time series
+- `GET /api/raytracer/ionogram/latest` - Synthetic ionogram data
+- `GET /api/raytracer/link_budget` - SNR and path loss breakdown
+- `GET /api/raytracer/coverage_map` - Geographic coverage data
+- `GET /api/raytracer/statistics` - Raytracer performance stats
 
 **C++ API** (see headers in `src/assimilation/include/`):
 - `sr_ukf.hpp` - Main filter class
@@ -2171,7 +2358,7 @@ If you use Auto-NVIS in your research, please cite:
 
 ## Project Statistics
 
-- **Total Lines of Code**: ~22,500 (C++/Python production)
+- **Total Lines of Code**: ~24,000 (C++/Python production)
 - **Ray Tracer Package**: ~9,700 LOC (IONORT-style 3D magnetoionic ray tracing)
   - Core ray tracing: ~3,700 LOC
   - IONORT integrators: ~1,500 LOC
@@ -2179,14 +2366,19 @@ If you use Auto-NVIS in your research, please cite:
   - Link budget calculator: ~760 LOC
   - IONORT visualizations: ~1,400 LOC (with diagnostic console)
   - Unit tests: ~1,200 LOC
+- **Web Dashboard Ray Tracer**: ~1,530 LOC
+  - Backend API: ~273 LOC (FastAPI router, 10 endpoints)
+  - State management extensions: ~150 LOC
+  - JavaScript visualizations: ~815 LOC (Plotly.js + Leaflet.js)
+  - CSS styles: ~292 LOC (dark theme)
 - **Data Ingestion**: ~3,000 LOC (GIRO client, live ionosonde)
 - **Test Infrastructure**: ~4,500 LOC (284 brutal tests)
-- **Documentation**: ~6,000 lines across 35+ documents
-- **Development Time**: 3.5 months (Phase 1-12)
+- **Documentation**: ~6,500 lines across 35+ documents
+- **Development Time**: 3.5 months (Phase 1-12a)
 - **Test Pass Rate**: 78% (222/284 tests)
 - **CPU Stress Tests**: 110s brutal system integration ✅
 - **Contributors**: [TBD]
-- **Last Updated**: February 24, 2026
+- **Last Updated**: March 9, 2026
 
 ---
 
@@ -2242,7 +2434,7 @@ This ensures the system can handle real-world solar storms and production worklo
 
 ---
 
-**Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Multi-Hop + Link Budget)
-**Last Updated**: February 24, 2026
-**Version**: 0.3.4
+**Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC, Propagation & Ray Tracer Displays + IONORT-Style Ray Tracing + Multi-Hop + Link Budget + Web Ray Tracer Dashboard)
+**Last Updated**: March 9, 2026
+**Version**: 0.3.5
 **Next Milestone**: Test Failure Resolution + Extended Validation (Phases 13-14)
