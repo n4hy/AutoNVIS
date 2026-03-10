@@ -1,0 +1,292 @@
+/**
+ * Raytracer View Styles
+ *
+ * Color scheme:
+ * - O-Mode rays: #00BFFF (DeepSkyBlue)
+ * - X-Mode rays: #FF6B6B (Coral)
+ * - Ionosphere shading: rgba(100, 149, 237, 0.2) (Cornflower blue, transparent)
+ * - Ground line: #228B22 (Forest green)
+ */
+
+/* Frequency stat cards */
+.luf-card .stat-value {
+    color: #FFD700; /* Yellow/Gold for LUF */
+}
+
+.muf-card .stat-value {
+    color: #F44336; /* Red for MUF */
+}
+
+.fot-card .stat-value {
+    color: #4CAF50; /* Green for FOT */
+}
+
+.stat-subtitle {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 5px;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+/* Mini stat cards for additional metrics */
+.mini-card {
+    padding: 12px;
+}
+
+.mini-card .stat-value.mini {
+    font-size: 20px;
+    color: var(--primary-color);
+}
+
+.mini-card .stat-label {
+    font-size: 11px;
+}
+
+/* Coverage map styling */
+#coverage-map {
+    border-radius: 4px;
+    overflow: hidden;
+    background: #1e1e1e;
+}
+
+/* Winner triplets table */
+#winners-table {
+    font-size: 13px;
+}
+
+#winners-table th {
+    background: #2d2d2d;
+    color: #e0e0e0;
+    font-weight: 600;
+    padding: 10px 8px;
+    text-align: center;
+    border-bottom: 2px solid #444;
+}
+
+#winners-table td {
+    padding: 8px;
+    text-align: center;
+    border-bottom: 1px solid #333;
+}
+
+#winners-table tr:hover {
+    background: rgba(33, 150, 243, 0.1);
+}
+
+/* Mode badges in table */
+.mode-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+}
+
+.mode-badge.o-mode {
+    background: rgba(0, 191, 255, 0.2);
+    color: #00BFFF;
+    border: 1px solid #00BFFF;
+}
+
+.mode-badge.x-mode {
+    background: rgba(255, 107, 107, 0.2);
+    color: #FF6B6B;
+    border: 1px solid #FF6B6B;
+}
+
+/* SNR coloring */
+.snr-excellent {
+    color: #4CAF50;
+    font-weight: 600;
+}
+
+.snr-good {
+    color: #8BC34A;
+}
+
+.snr-marginal {
+    color: #FF9800;
+}
+
+.snr-poor {
+    color: #F44336;
+}
+
+/* Plot containers dark theme override */
+.plot-container {
+    background: #1e1e1e;
+    border-radius: 4px;
+}
+
+/* Controls panel styling */
+.controls-panel {
+    background: #2d2d2d;
+    padding: 10px 15px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.controls-panel label {
+    color: #b0b0b0;
+    font-size: 13px;
+    margin-right: 5px;
+}
+
+.controls-panel select {
+    background: #1e1e1e;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.controls-panel select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+/* Leaflet map dark theme */
+.leaflet-container {
+    background: #1a1a2e !important;
+}
+
+.leaflet-tile {
+    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+
+/* Coverage map legend */
+.map-legend {
+    background: rgba(30, 30, 30, 0.9);
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #e0e0e0;
+}
+
+.map-legend h4 {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    color: #fff;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin: 4px 0;
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.legend-color.o-mode {
+    background: #00BFFF;
+}
+
+.legend-color.x-mode {
+    background: #FF6B6B;
+}
+
+/* Table scrolling */
+.table-responsive {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.table-responsive::-webkit-scrollbar {
+    width: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #1e1e1e;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 4px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Card dark theme adjustments */
+.card {
+    background: #252525;
+    border: 1px solid #333;
+}
+
+.card-title {
+    color: #e0e0e0;
+    border-bottom-color: var(--primary-color);
+}
+
+.card-subtitle {
+    color: #888;
+}
+
+/* Stat cards dark theme */
+.stat-card {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+}
+
+.stat-label {
+    color: #888;
+}
+
+/* Empty state styling */
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+}
+
+.empty-state i {
+    font-size: 48px;
+    margin-bottom: 15px;
+    display: block;
+}
+
+/* Loading state */
+.loading-spinner {
+    color: #888;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .grid-4col {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .grid-4col {
+        grid-template-columns: 1fr;
+    }
+
+    .controls-panel {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    #winners-table {
+        font-size: 11px;
+    }
+
+    #winners-table th,
+    #winners-table td {
+        padding: 6px 4px;
+    }
+}

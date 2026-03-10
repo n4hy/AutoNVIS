@@ -229,6 +229,48 @@ class APIClient {
     async getPlacementHeatmap(resolution = 50) {
         return this._fetch(`/api/nvis/placement/heatmap?resolution=${resolution}`);
     }
+
+    // === Raytracer API ===
+
+    async getRaytracerHomingLatest(maxAgeSeconds = 1200) {
+        return this._fetch(`/api/raytracer/homing/latest?max_age_seconds=${maxAgeSeconds}`);
+    }
+
+    async getRaytracerWinnersLatest(limit = 100) {
+        return this._fetch(`/api/raytracer/winners/latest?limit=${limit}`);
+    }
+
+    async getRaytracerWinnersByFrequency(freqMin = 2.0, freqMax = 30.0, hours = 24) {
+        return this._fetch(`/api/raytracer/winners/by_frequency?freq_min=${freqMin}&freq_max=${freqMax}&hours=${hours}`);
+    }
+
+    async getRaytracerRayPaths() {
+        return this._fetch('/api/raytracer/ray_paths');
+    }
+
+    async getRaytracerCurrentFrequencies() {
+        return this._fetch('/api/raytracer/frequencies/current');
+    }
+
+    async getRaytracerFrequencyHistory(hours = 24) {
+        return this._fetch(`/api/raytracer/frequencies/history?hours=${hours}`);
+    }
+
+    async getRaytracerIonogramLatest() {
+        return this._fetch('/api/raytracer/ionogram/latest');
+    }
+
+    async getRaytracerLinkBudget() {
+        return this._fetch('/api/raytracer/link_budget');
+    }
+
+    async getRaytracerCoverageMap() {
+        return this._fetch('/api/raytracer/coverage_map');
+    }
+
+    async getRaytracerStatistics() {
+        return this._fetch('/api/raytracer/statistics');
+    }
 }
 
 // Create global API client instance

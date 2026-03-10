@@ -81,6 +81,15 @@ class DashboardState:
         self.latest_glotec_time: Optional[datetime] = None
         self.glotec_history: Deque[Dict[str, Any]] = deque(maxlen=144)  # 24h @ 10min intervals
 
+        # --- Raytracer Data ---
+        self.raytracer_lock = threading.Lock()
+        self.latest_homing_result: Optional[Dict[str, Any]] = None
+        self.latest_homing_time: Optional[datetime] = None
+        self.winner_triplets_history: Deque[Dict[str, Any]] = deque(maxlen=1000)
+        self.ray_paths_cache: Optional[Dict[str, Any]] = None
+        self.ionogram_data: Optional[Dict[str, Any]] = None
+        self.muf_luf_fot_raytracer_history: Deque[Dict[str, Any]] = deque(maxlen=1000)
+
         # Statistics
         self.stats = {
             'grids_received': 0,
@@ -88,7 +97,8 @@ class DashboardState:
             'spaceweather_updates': 0,
             'observations_received': 0,
             'alerts_generated': 0,
-            'glotec_maps_received': 0
+            'glotec_maps_received': 0,
+            'raytracer_results_received': 0
         }
 
     # --- Grid Data Methods ---
@@ -521,3 +531,162 @@ class DashboardState:
             'observation_counts': self.get_observation_counts(),
             'active_services': len(self.service_status)
         }
+
+    # --- Raytracer Data Methods ---
+
+    def update_homing_result(self, result_data: Dict[str, Any]):
+        """
+        Update latest homing algorithm result.
+
+        Args:
+            result_data: Homing result dictionary containing winner triplets,
+                        MUF/LUF/FOT, and ray path data
+        """
+        with self.raytracer_lock:
+            self.latest_homing_result = result_data
+            self.latest_homing_time = datetime.utcnow()
+            self.stats['raytracer_results_received'] += 1
+
+            # Extract and store MUF/LUF/FOT history
+            timestamp = result_data.get('timestamp', datetime.utcnow().isoformat())
+            if result_data.get('muf') is not None:
+                self.muf_luf_fot_raytracer_history.append({
+                    'timestamp': timestamp,
+                    'muf': result_data.get('muf'),
+                    'luf': result_data.get('luf'),
+                    'fot': result_data.get('fot'),
+                    'num_winners': result_data.get('num_winners', 0)
+                })
+
+            # Store winner triplets in history
+            winners = result_data.get('winner_triplets', [])
+            for winner in winners:
+                winner_entry = {
+                    'timestamp': timestamp,
+                    **winner
+                }
+                self.winner_triplets_history.append(winner_entry)
+
+    def get_latest_homing_result(self, max_age_seconds: float = 1200.0) -> Optional[Dict[str, Any]]:
+        """
+        Get latest homing result if fresh enough.
+
+        Args:
+            max_age_seconds: Maximum acceptable age in seconds
+
+        Returns:
+            Homing result dictionary or None
+        """
+        with self.raytracer_lock:
+            if self.latest_homing_result is None or self.latest_homing_time is None:
+                return None
+
+            age = (datetime.utcnow() - self.latest_homing_time).total_seconds()
+            if age > max_age_seconds:
+                return None
+
+            return self.latest_homing_result
+
+    def get_winner_triplets(self, hours: int = 24, frequency_min: Optional[float] = None,
+                            frequency_max: Optional[float] = None) -> List[Dict[str, Any]]:
+        """
+        Get winner triplets history, optionally filtered by frequency range.
+
+        Args:
+            hours: Number of hours to include
+            frequency_min: Minimum frequency filter (MHz)
+            frequency_max: Maximum frequency filter (MHz)
+
+        Returns:
+            List of winner triplet dictionaries
+        """
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+
+        with self.raytracer_lock:
+            winners = []
+            for entry in self.winner_triplets_history:
+                try:
+                    timestamp = datetime.fromisoformat(entry['timestamp'].rstrip('Z'))
+                    if timestamp < cutoff:
+                        continue
+
+                    freq = entry.get('frequency_mhz', 0)
+                    if frequency_min is not None and freq < frequency_min:
+                        continue
+                    if frequency_max is not None and freq > frequency_max:
+                        continue
+
+                    winners.append(entry)
+                except (ValueError, KeyError):
+                    continue
+
+            return winners
+
+    def update_ray_paths(self, ray_paths_data: Dict[str, Any]):
+        """
+        Update cached ray path data for visualization.
+
+        Args:
+            ray_paths_data: Dictionary with ray path arrays (ground_ranges, altitudes)
+                           organized by frequency and mode
+        """
+        with self.raytracer_lock:
+            self.ray_paths_cache = ray_paths_data
+
+    def get_ray_paths(self) -> Optional[Dict[str, Any]]:
+        """Get cached ray path data for cross-section visualization."""
+        with self.raytracer_lock:
+            return self.ray_paths_cache
+
+    def update_ionogram(self, ionogram_data: Dict[str, Any]):
+        """
+        Update synthetic ionogram data.
+
+        Args:
+            ionogram_data: Dictionary with frequency, group_delay, and mode arrays
+        """
+        with self.raytracer_lock:
+            self.ionogram_data = ionogram_data
+
+    def get_ionogram(self) -> Optional[Dict[str, Any]]:
+        """Get latest synthetic ionogram data."""
+        with self.raytracer_lock:
+            return self.ionogram_data
+
+    def get_raytracer_frequency_history(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """
+        Get MUF/LUF/FOT history from raytracer for specified time window.
+
+        Args:
+            hours: Number of hours to include
+
+        Returns:
+            List of frequency history entries
+        """
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+
+        with self.raytracer_lock:
+            return [
+                entry for entry in self.muf_luf_fot_raytracer_history
+                if datetime.fromisoformat(entry['timestamp'].rstrip('Z')) > cutoff
+            ]
+
+    def get_raytracer_statistics(self) -> Dict[str, Any]:
+        """Get raytracer-specific statistics."""
+        with self.raytracer_lock:
+            latest = self.latest_homing_result
+            return {
+                'results_received': self.stats.get('raytracer_results_received', 0),
+                'latest_result_age_seconds': (
+                    (datetime.utcnow() - self.latest_homing_time).total_seconds()
+                    if self.latest_homing_time else None
+                ),
+                'winner_triplets_in_history': len(self.winner_triplets_history),
+                'frequency_history_entries': len(self.muf_luf_fot_raytracer_history),
+                'has_ray_paths_cache': self.ray_paths_cache is not None,
+                'has_ionogram_data': self.ionogram_data is not None,
+                'latest_muf': latest.get('muf') if latest else None,
+                'latest_luf': latest.get('luf') if latest else None,
+                'latest_fot': latest.get('fot') if latest else None,
+                'latest_num_winners': latest.get('num_winners') if latest else None
+            }

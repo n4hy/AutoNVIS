@@ -394,6 +394,7 @@ def create_app(
         from .backend.spaceweather_api import create_spaceweather_routes
         from .backend.glotec_api import create_glotec_routes
         from .backend.control_api import create_control_routes
+        from .backend.raytracer_api import create_raytracer_routes
 
         dashboard_state = subscribers.get('state')
 
@@ -403,12 +404,14 @@ def create_app(
         spaceweather_router = create_spaceweather_routes(dashboard_state)
         glotec_router = create_glotec_routes(dashboard_state)
         control_router = create_control_routes(dashboard_state, mq_client)
+        raytracer_router = create_raytracer_routes(dashboard_state)
 
         app.include_router(ionosphere_router)
         app.include_router(propagation_router)
         app.include_router(spaceweather_router)
         app.include_router(glotec_router)
         app.include_router(control_router)
+        app.include_router(raytracer_router)
 
         # Note: WebSocket broadcast callbacks are now set during subscriber construction
         # in main.py, before threads start. This ensures no messages are lost.
@@ -452,6 +455,11 @@ def create_app(
     async def control_view(request: Request):
         """System control page"""
         return templates.TemplateResponse("control.html", {"request": request})
+
+    @app.get("/raytracer", response_class=HTMLResponse)
+    async def raytracer_view(request: Request):
+        """PHaRLAP ray tracing visualization page"""
+        return templates.TemplateResponse("raytracer.html", {"request": request})
 
     @app.get("/api/nvis/sounders")
     async def list_sounders():

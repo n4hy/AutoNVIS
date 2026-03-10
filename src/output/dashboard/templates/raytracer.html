@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Ray Tracer - AutoNVIS Dashboard{% endblock %}
+
+{% block nav_raytracer %}active{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/raytracer.css">
+{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>PHaRLAP Ray Tracer</h1>
+    <p>HF propagation ray tracing, winner triplets, and link budget analysis</p>
+</div>
+
+<!-- Current Frequencies (MUF/LUF/FOT) -->
+<div class="grid-3col">
+    <div class="stat-card luf-card">
+        <div class="stat-value" id="current-luf">--</div>
+        <div class="stat-label">LUF (MHz)</div>
+        <div class="stat-subtitle">Lowest Usable Frequency</div>
+    </div>
+    <div class="stat-card muf-card">
+        <div class="stat-value" id="current-muf">--</div>
+        <div class="stat-label">MUF (MHz)</div>
+        <div class="stat-subtitle">Maximum Usable Frequency</div>
+    </div>
+    <div class="stat-card fot-card">
+        <div class="stat-value" id="current-fot">--</div>
+        <div class="stat-label">FOT (MHz)</div>
+        <div class="stat-subtitle">Frequency of Optimum Traffic</div>
+    </div>
+</div>
+
+<!-- Additional Stats Row -->
+<div class="grid-4col" style="margin-top: 10px; margin-bottom: 20px;">
+    <div class="stat-card mini-card">
+        <div class="stat-value mini" id="num-winners">--</div>
+        <div class="stat-label">Winners</div>
+    </div>
+    <div class="stat-card mini-card">
+        <div class="stat-value mini" id="path-range">--</div>
+        <div class="stat-label">Range (km)</div>
+    </div>
+    <div class="stat-card mini-card">
+        <div class="stat-value mini" id="compute-time">--</div>
+        <div class="stat-label">Compute (s)</div>
+    </div>
+    <div class="stat-card mini-card">
+        <div class="stat-value mini" id="result-age">--</div>
+        <div class="stat-label">Age</div>
+    </div>
+</div>
+
+<!-- Ray Path Cross-Section and Coverage Map -->
+<div class="grid-2col">
+    <div class="card">
+        <h2 class="card-title">Ray Path Cross-Section</h2>
+        <p class="card-subtitle">Altitude vs ground range with ionospheric layers</p>
+        <div id="ray-paths-plot" class="plot-container"></div>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">Coverage Map</h2>
+        <p class="card-subtitle">Winner triplet landing points</p>
+        <div id="coverage-map" style="height: 400px;"></div>
+    </div>
+</div>
+
+<!-- Synthetic Ionogram and Frequency History -->
+<div class="grid-2col">
+    <div class="card">
+        <h2 class="card-title">Synthetic Ionogram</h2>
+        <p class="card-subtitle">Group delay vs frequency (O-mode and X-mode)</p>
+        <div id="ionogram-plot" class="plot-container"></div>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">MUF/LUF/FOT History</h2>
+        <div class="controls-panel">
+            <label for="freq-history-hours">Time Range:</label>
+            <select id="freq-history-hours" onchange="updateFrequencyHistory()">
+                <option value="6">6 hours</option>
+                <option value="12">12 hours</option>
+                <option value="24" selected>24 hours</option>
+                <option value="48">48 hours</option>
+            </select>
+        </div>
+        <div id="frequency-history-plot" class="plot-container"></div>
+    </div>
+</div>
+
+<!-- Winner Triplets Table -->
+<div class="card">
+    <h2 class="card-title">Winner Triplets</h2>
+    <div class="controls-panel">
+        <label for="winners-mode-filter">Mode:</label>
+        <select id="winners-mode-filter" onchange="renderWinnersTable()">
+            <option value="all">All</option>
+            <option value="O">O-Mode</option>
+            <option value="X">X-Mode</option>
+        </select>
+        <label for="winners-sort">Sort by:</label>
+        <select id="winners-sort" onchange="renderWinnersTable()">
+            <option value="frequency">Frequency</option>
+            <option value="snr">SNR</option>
+            <option value="elevation">Elevation</option>
+            <option value="delay">Delay</option>
+        </select>
+    </div>
+    <div class="table-responsive">
+        <table id="winners-table">
+            <thead>
+                <tr>
+                    <th>Freq (MHz)</th>
+                    <th>Elev (deg)</th>
+                    <th>Az (deg)</th>
+                    <th>Delay (ms)</th>
+                    <th>Range (km)</th>
+                    <th>Mode</th>
+                    <th>Hops</th>
+                    <th>Ref Height (km)</th>
+                    <th>SNR (dB)</th>
+                    <th>Path Loss (dB)</th>
+                </tr>
+            </thead>
+            <tbody id="winners-table-body">
+                <tr>
+                    <td colspan="10" class="loading-spinner">Loading winner triplets...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Link Budget Chart -->
+<div class="card">
+    <h2 class="card-title">Link Budget Analysis</h2>
+    <p class="card-subtitle">SNR and path loss breakdown by frequency</p>
+    <div id="link-budget-plot" class="plot-container"></div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/raytracer.js"></script>
+{% endblock %}
