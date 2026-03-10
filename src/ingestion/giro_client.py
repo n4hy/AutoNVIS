@@ -86,21 +86,261 @@ class IonosondeMeasurement:
         return self.age_seconds() < max_age_seconds and self.foF2 > 0
 
 
-# Default GIRO stations (most reliable real-time data)
+# Default GIRO stations - Global network with reliable real-time data
+# Expanded from 12 to 27 stations for better global coverage
 DEFAULT_GIRO_STATIONS = [
+    # North America
     GIROStation("JR055", "Millstone Hill", 42.619, -71.491, "US", "MHJ45"),
     GIROStation("BC840", "Boulder", 40.015, -105.264, "US", "BC840"),
     GIROStation("WP937", "Wallops Island", 37.930, -75.467, "US", "WP937"),
     GIROStation("EG931", "Eglin AFB", 30.467, -86.517, "US", "EG931"),
-    GIROStation("AU930", "Canberra", -35.317, 149.006, "AU", "CB53N"),
-    GIROStation("DB049", "Dourbes", 50.099, 4.594, "BE", "DB049"),
-    GIROStation("JJ433", "Wakkanai", 45.390, 141.688, "JP", "WK546"),
-    GIROStation("RL052", "Rome", 41.900, 12.515, "IT", "RO041"),
     GIROStation("PA836", "Point Arguello", 34.567, -120.633, "US", "PA836"),
+    GIROStation("PRJ18", "Puerto Rico", 18.494, -67.139, "PR", "PRJ18"),
+    GIROStation("THJ76", "Thule", 77.467, -69.217, "GL", "THJ76"),
+
+    # Europe
+    GIROStation("DB049", "Dourbes", 50.099, 4.594, "BE", "DB049"),
+    GIROStation("RL052", "Rome", 41.900, 12.515, "IT", "RO041"),
+    GIROStation("SV611", "San Vito", 40.600, 17.800, "IT", "SV611"),
+    GIROStation("JU434", "Juliusruh", 54.633, 13.383, "DE", "JR055"),
+    GIROStation("AT138", "Athens", 38.050, 23.867, "GR", "AT138"),
+    GIROStation("EB040", "Ebro", 40.957, 0.492, "ES", "EB040"),
+    GIROStation("SO148", "Sodankyla", 67.367, 26.633, "FI", "SO148"),
+    GIROStation("TR170", "Tromso", 69.667, 18.950, "NO", "TR170"),
+
+    # Asia-Pacific
+    GIROStation("JJ433", "Wakkanai", 45.390, 141.688, "JP", "WK546"),
+    GIROStation("TO535", "Tokyo/Kokubunji", 35.710, 139.488, "JP", "TO535"),
+    GIROStation("OKJ24", "Okinawa", 26.333, 127.800, "JP", "OKJ24"),
+    GIROStation("AU930", "Canberra", -35.317, 149.006, "AU", "CB53N"),
+    GIROStation("HO54K", "Hobart", -42.883, 147.317, "AU", "HO54K"),
+    GIROStation("DA122", "Darwin", -12.467, 130.867, "AU", "DA122"),
+
+    # Africa & Atlantic
     GIROStation("GA762", "Grahamstown", -33.300, 26.533, "ZA", "GR13L"),
     GIROStation("AS00Q", "Ascension Island", -7.950, -14.400, "SH", "AS00Q"),
-    GIROStation("SV611", "San Vito", 40.600, 17.800, "IT", "SV611"),
+    GIROStation("SB49P", "Sao Luis", -2.600, -44.233, "BR", "SB49P"),
+
+    # South America
+    GIROStation("JI91J", "Jicamarca", -11.950, -76.867, "PE", "JI91J"),
+    GIROStation("PA839", "Port Stanley", -51.700, -57.867, "FK", "PA839"),
+
+    # Arctic/Antarctic
+    GIROStation("SY88K", "Syowa", -69.000, 39.583, "AQ", "SY88K"),
 ]
+
+
+class DIDBaseParser:
+    """
+    Parser for DIDBase CSV response format from GIRO.
+
+    DIDBase (Digital Ionogram Database) provides ionospheric parameters
+    in CSV format. This parser handles the specific format and data
+    quality markers used by the GIRO network.
+
+    CSV Format:
+        Time,CS,foF2,QD,hmF2,QD,foF1,QD,hmF1,QD,foE,QD,hmE,QD,MUF(3000)F2,QD,fmin,QD
+        2026.03.10 12:00:00,A,7.850,0,285.3,0,4.125,0,195.2,0,2.850,0,105.5,0,22.5,0,1.850,0
+
+    Where:
+        - Time: Timestamp in "YYYY.MM.DD HH:MM:SS" format
+        - CS: Confidence score (A/B/C or numeric)
+        - QD: Quality descriptor (0=good, 1=fair, 2=poor, -1=missing)
+        - Values: Ionospheric parameters in standard units
+
+    Missing data markers: '-', '---', 'N/A', '//', ''
+    """
+
+    MISSING_MARKERS = {'-', '---', 'N/A', '//', '', 'nan', 'NaN'}
+
+    # Expected columns in DIDBase CSV output
+    EXPECTED_COLUMNS = [
+        'Time', 'CS',
+        'foF2', 'QD_foF2',
+        'hmF2', 'QD_hmF2',
+        'foF1', 'QD_foF1',
+        'hmF1', 'QD_hmF1',
+        'foE', 'QD_foE',
+        'hmE', 'QD_hmE',
+        'MUF(3000)F2', 'QD_MUF',
+        'fmin', 'QD_fmin'
+    ]
+
+    @staticmethod
+    def parse_timestamp(ts_str: str) -> Optional[datetime]:
+        """
+        Parse DIDBase timestamp format.
+
+        Args:
+            ts_str: Timestamp string in "YYYY.MM.DD HH:MM:SS" format
+
+        Returns:
+            datetime object or None if parsing fails
+        """
+        formats = [
+            "%Y.%m.%d %H:%M:%S",  # Primary format
+            "%Y-%m-%d %H:%M:%S",  # ISO format
+            "%Y/%m/%d %H:%M:%S",  # Alternate format
+            "%Y.%m.%d %H:%M",     # Without seconds
+            "%Y-%m-%dT%H:%M:%SZ", # ISO with T separator
+        ]
+
+        for fmt in formats:
+            try:
+                return datetime.strptime(ts_str.strip(), fmt).replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+
+        return None
+
+    @staticmethod
+    def parse_value(value_str: str, default: Optional[float] = None) -> Optional[float]:
+        """
+        Parse a numeric value, handling missing data markers.
+
+        Args:
+            value_str: Value string from CSV
+            default: Default value if missing
+
+        Returns:
+            Parsed float value or default
+        """
+        if not value_str or value_str.strip() in DIDBaseParser.MISSING_MARKERS:
+            return default
+
+        try:
+            return float(value_str.strip())
+        except ValueError:
+            return default
+
+    @staticmethod
+    def parse_csv_response(
+        csv_data: str,
+        station: GIROStation
+    ) -> List[IonosondeMeasurement]:
+        """
+        Parse DIDBase CSV response into IonosondeMeasurement objects.
+
+        Args:
+            csv_data: CSV string from DIDBase API
+            station: Station metadata
+
+        Returns:
+            List of IonosondeMeasurement objects
+        """
+        measurements = []
+
+        if not csv_data or not csv_data.strip():
+            return measurements
+
+        lines = csv_data.strip().split('\n')
+        if len(lines) < 2:
+            return measurements
+
+        # Parse header to determine column positions
+        header = lines[0].strip()
+        if header.startswith('#'):
+            header = header[1:].strip()
+
+        columns = [c.strip() for c in header.split(',')]
+
+        # Build column index map
+        col_idx = {}
+        for i, col in enumerate(columns):
+            col_idx[col.lower()] = i
+
+        # Parse data lines
+        for line in lines[1:]:
+            if not line.strip() or line.startswith('#'):
+                continue
+
+            values = line.split(',')
+            if len(values) < 3:  # Minimum: time, confidence, foF2
+                continue
+
+            try:
+                # Parse timestamp
+                ts_idx = col_idx.get('time', 0)
+                timestamp = DIDBaseParser.parse_timestamp(values[ts_idx])
+                if timestamp is None:
+                    continue
+
+                # Parse foF2 (required)
+                fof2_idx = col_idx.get('fof2', 2)
+                foF2 = DIDBaseParser.parse_value(values[fof2_idx] if fof2_idx < len(values) else '')
+                if foF2 is None or foF2 <= 0:
+                    continue
+
+                # Parse hmF2 (required)
+                hmf2_idx = col_idx.get('hmf2', 4)
+                hmF2 = DIDBaseParser.parse_value(values[hmf2_idx] if hmf2_idx < len(values) else '', 300.0)
+
+                # Parse optional parameters
+                fof1_idx = col_idx.get('fof1', 6)
+                foF1 = DIDBaseParser.parse_value(values[fof1_idx] if fof1_idx < len(values) else '')
+
+                hmf1_idx = col_idx.get('hmf1', 8)
+                hmF1 = DIDBaseParser.parse_value(values[hmf1_idx] if hmf1_idx < len(values) else '')
+
+                foe_idx = col_idx.get('foe', 10)
+                foE = DIDBaseParser.parse_value(values[foe_idx] if foe_idx < len(values) else '')
+
+                muf_idx = col_idx.get('muf(3000)f2', 14)
+                MUF3000 = DIDBaseParser.parse_value(values[muf_idx] if muf_idx < len(values) else '')
+
+                fmin_idx = col_idx.get('fmin', 16)
+                fmin = DIDBaseParser.parse_value(values[fmin_idx] if fmin_idx < len(values) else '')
+
+                # Parse confidence score
+                cs_idx = col_idx.get('cs', 1)
+                cs_str = values[cs_idx].strip() if cs_idx < len(values) else 'C'
+                confidence = DIDBaseParser._parse_confidence(cs_str)
+
+                measurement = IonosondeMeasurement(
+                    station=station,
+                    timestamp=timestamp,
+                    foF2=foF2,
+                    hmF2=hmF2,
+                    foF1=foF1,
+                    hmF1=hmF1,
+                    foE=foE,
+                    MUF3000=MUF3000,
+                    fmin=fmin,
+                    confidence=confidence,
+                    source="GIRO/DIDBase"
+                )
+                measurements.append(measurement)
+
+            except Exception as e:
+                logger.debug(f"Error parsing line: {line}: {e}")
+                continue
+
+        return measurements
+
+    @staticmethod
+    def _parse_confidence(cs_str: str) -> float:
+        """
+        Parse confidence score from DIDBase.
+
+        Args:
+            cs_str: Confidence string ('A', 'B', 'C' or numeric)
+
+        Returns:
+            Confidence value 0.0-1.0
+        """
+        cs_str = cs_str.upper().strip()
+
+        if cs_str == 'A':
+            return 1.0
+        elif cs_str == 'B':
+            return 0.7
+        elif cs_str == 'C':
+            return 0.4
+        else:
+            try:
+                return min(1.0, max(0.0, float(cs_str)))
+            except ValueError:
+                return 0.5
 
 
 class GIRODataWorker(QObject):
@@ -173,8 +413,8 @@ class GIRODataWorker(QObject):
             if loop:
                 try:
                     loop.close()
-                except Exception:
-                    pass
+                except RuntimeError:
+                    pass  # Loop already closed
 
     async def _async_fetch_all(self):
         """Fetch from multiple sources concurrently."""
@@ -307,54 +547,82 @@ class GIRODataWorker(QObject):
             logger.debug(f"GIRO latest fetch error: {e}")
 
     def _parse_giro_response(self, station: GIROStation, data: str) -> Optional[IonosondeMeasurement]:
-        """Parse GIRO API response."""
-        try:
-            # GIRO responses are typically CSV or JSON
-            # This needs to be adapted to actual GIRO format
-            if not data or len(data) < 10:
-                return None
+        """
+        Parse GIRO API response using DIDBase parser.
 
-            # Try JSON parsing
+        Args:
+            station: Station metadata
+            data: Response data (CSV or JSON format)
+
+        Returns:
+            Latest IonosondeMeasurement or None
+        """
+        if not data or len(data) < 10:
+            return None
+
+        try:
+            # Try JSON parsing first
             try:
                 records = json.loads(data)
                 if isinstance(records, list) and records:
                     latest = records[-1]
+                    foF2 = float(latest.get('foF2', latest.get('fof2', 0)))
+                    if foF2 <= 0:
+                        return None
+
+                    # Parse timestamp if present
+                    ts_str = latest.get('time', latest.get('timestamp', ''))
+                    timestamp = DIDBaseParser.parse_timestamp(ts_str) if ts_str else datetime.now(timezone.utc)
+
                     return IonosondeMeasurement(
                         station=station,
-                        timestamp=datetime.now(timezone.utc),
-                        foF2=float(latest.get('foF2', 0)),
-                        hmF2=float(latest.get('hmF2', 300)),
-                        foE=latest.get('foE'),
-                        MUF3000=latest.get('MUF(3000)F2'),
-                        source="GIRO"
+                        timestamp=timestamp or datetime.now(timezone.utc),
+                        foF2=foF2,
+                        hmF2=float(latest.get('hmF2', latest.get('hmf2', 300))),
+                        foF1=DIDBaseParser.parse_value(str(latest.get('foF1', ''))),
+                        hmF1=DIDBaseParser.parse_value(str(latest.get('hmF1', ''))),
+                        foE=DIDBaseParser.parse_value(str(latest.get('foE', ''))),
+                        hmE=DIDBaseParser.parse_value(str(latest.get('hmE', ''))),
+                        MUF3000=DIDBaseParser.parse_value(str(latest.get('MUF(3000)F2', latest.get('MUF3000', '')))),
+                        fmin=DIDBaseParser.parse_value(str(latest.get('fmin', ''))),
+                        source="GIRO/JSON"
                     )
             except json.JSONDecodeError:
                 pass
 
-            # Try CSV parsing (common GIRO format)
+            # Use DIDBase CSV parser
+            measurements = DIDBaseParser.parse_csv_response(data, station)
+            if measurements:
+                # Return most recent measurement
+                return max(measurements, key=lambda m: m.timestamp)
+
+            # Fallback: simple CSV parsing for legacy format
             lines = data.strip().split('\n')
             if len(lines) >= 2:
-                # Header line followed by data
-                headers = lines[0].split(',')
-                values = lines[-1].split(',')  # Latest record
+                # Skip comment lines
+                data_lines = [l for l in lines if not l.startswith('#')]
+                if len(data_lines) >= 2:
+                    headers = [h.strip().lower() for h in data_lines[0].split(',')]
+                    values = data_lines[-1].split(',')  # Latest record
 
-                record = dict(zip(headers, values))
-                foF2 = float(record.get('foF2', record.get('fof2', 0)))
-                hmF2 = float(record.get('hmF2', record.get('hmf2', 300)))
+                    if len(headers) == len(values):
+                        record = dict(zip(headers, values))
+                        foF2 = DIDBaseParser.parse_value(record.get('fof2', ''))
 
-                if foF2 > 0:
-                    return IonosondeMeasurement(
-                        station=station,
-                        timestamp=datetime.now(timezone.utc),
-                        foF2=foF2,
-                        hmF2=hmF2,
-                        foE=float(record.get('foE', 0)) if record.get('foE') else None,
-                        MUF3000=float(record.get('MUF(3000)F2', 0)) if record.get('MUF(3000)F2') else None,
-                        source="GIRO"
-                    )
+                        if foF2 and foF2 > 0:
+                            return IonosondeMeasurement(
+                                station=station,
+                                timestamp=datetime.now(timezone.utc),
+                                foF2=foF2,
+                                hmF2=DIDBaseParser.parse_value(record.get('hmf2', ''), 300.0),
+                                foE=DIDBaseParser.parse_value(record.get('foe', '')),
+                                MUF3000=DIDBaseParser.parse_value(record.get('muf(3000)f2', '')),
+                                fmin=DIDBaseParser.parse_value(record.get('fmin', '')),
+                                source="GIRO/CSV"
+                            )
 
         except Exception as e:
-            logger.debug(f"Error parsing GIRO response: {e}")
+            logger.debug(f"Error parsing GIRO response for {station.code}: {e}")
 
         return None
 

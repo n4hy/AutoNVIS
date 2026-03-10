@@ -26,22 +26,46 @@ Usage:
 import numpy as np
 from typing import Dict, List, Tuple, Optional
 import logging
+import signal
+import sys
+
+# Flag indicating if C++ raytracer is available
+_RAYTRACER_AVAILABLE = False
+_RAYTRACER_ERROR = None
 
 try:
     # Import C++ ray tracer module
     try:
         from . import raytracer
+        _RAYTRACER_AVAILABLE = True
     except ImportError:
         # Fall back to direct import if not in package context
         import raytracer
-except ImportError:
-    # If not built yet, provide helpful error
-    raise ImportError(
+        _RAYTRACER_AVAILABLE = True
+except ImportError as e:
+    _RAYTRACER_ERROR = (
         "Ray tracer C++ module not found. Please build it first:\n"
         "  cd src/propagation\n"
         "  cmake -B build && cmake --build build -j$(nproc)\n"
         "  cmake --build build --target install\n"
     )
+except Exception as e:
+    _RAYTRACER_ERROR = f"Failed to import raytracer module: {e}"
+
+
+def is_raytracer_available() -> bool:
+    """Check if the C++ raytracer module is available."""
+    return _RAYTRACER_AVAILABLE
+
+
+def get_raytracer_error() -> Optional[str]:
+    """Get the error message if raytracer is not available."""
+    return _RAYTRACER_ERROR
+
+
+class RayTracerError(Exception):
+    """Exception raised when ray tracer initialization or operation fails."""
+    pass
 
 
 class RayTracer:
@@ -71,8 +95,41 @@ class RayTracer:
             alt: Altitude grid (km)
             xray_flux: GOES X-ray flux for D-region absorption (W/m²)
             igrf_file: Path to IGRF coefficients file (optional)
+
+        Raises:
+            RayTracerError: If raytracer module is not available or initialization fails
         """
         self.logger = logging.getLogger(__name__)
+
+        # Check if raytracer is available
+        if not _RAYTRACER_AVAILABLE:
+            raise RayTracerError(_RAYTRACER_ERROR or "Raytracer module not available")
+
+        # Validate inputs to prevent segfaults
+        if ne_grid is None or lat is None or lon is None or alt is None:
+            raise RayTracerError("Grid arrays cannot be None")
+
+        ne_grid = np.asarray(ne_grid, dtype=np.float64)
+        lat = np.asarray(lat, dtype=np.float64)
+        lon = np.asarray(lon, dtype=np.float64)
+        alt = np.asarray(alt, dtype=np.float64)
+
+        # Validate grid dimensions
+        if ne_grid.ndim != 3:
+            raise RayTracerError(f"ne_grid must be 3D, got {ne_grid.ndim}D")
+
+        expected_shape = (len(lat), len(lon), len(alt))
+        if ne_grid.shape != expected_shape:
+            raise RayTracerError(
+                f"ne_grid shape {ne_grid.shape} doesn't match grid dimensions {expected_shape}"
+            )
+
+        # Check for invalid values that could cause C++ issues
+        if np.any(np.isnan(ne_grid)) or np.any(np.isinf(ne_grid)):
+            raise RayTracerError("ne_grid contains NaN or Inf values")
+
+        if len(lat) < 2 or len(lon) < 2 or len(alt) < 2:
+            raise RayTracerError("Grid must have at least 2 points in each dimension")
 
         # Store grid parameters
         self.lat = lat
@@ -80,35 +137,44 @@ class RayTracer:
         self.alt = alt
         self.xray_flux = xray_flux
 
-        # Flatten Ne grid to row-major order for C++
-        ne_flat = ne_grid.flatten('C').tolist()
+        try:
+            # Flatten Ne grid to row-major order for C++
+            ne_flat = ne_grid.flatten('C').tolist()
 
-        # Create C++ ionospheric grid object
-        self.iono_grid = raytracer.IonoGrid(lat, lon, alt, ne_flat)
+            # Convert to lists for C++ binding (ensure correct types)
+            lat_list = lat.tolist()
+            lon_list = lon.tolist()
+            alt_list = alt.tolist()
 
-        # Create geomagnetic field model
-        if igrf_file:
-            self.geomag = raytracer.GeomagneticField(igrf_file)
-        else:
-            self.geomag = raytracer.GeomagneticField()  # Use dipole model
+            # Create C++ ionospheric grid object with error handling
+            self.iono_grid = raytracer.IonoGrid(lat_list, lon_list, alt_list, ne_flat)
 
-        # Default ray tracing configuration
-        self.config = raytracer.RayTracingConfig()
-        # Moderately optimized parameters (2026-02-13)
-        # Conservative to avoid stack overflow from recursive integrate_step
-        self.config.tolerance = 1e-6              # Slightly relaxed from 1e-7
-        self.config.initial_step_km = 1.0         # Moderate increase from 0.5
-        self.config.min_step_km = 0.05            # Slight increase from 0.01
-        self.config.max_step_km = 20.0            # Increased from 10.0
-        self.config.max_path_length_km = 5000.0   # NVIS range
-        self.config.max_steps = 50000             # Safety limit
-        self.config.calculate_absorption = False  # TODO: Fix D-region model
-        self.config.mode = raytracer.Mode.O_MODE  # O-mode default for NVIS
+            # Create geomagnetic field model
+            if igrf_file:
+                self.geomag = raytracer.GeomagneticField(igrf_file)
+            else:
+                self.geomag = raytracer.GeomagneticField()  # Use dipole model
 
-        # Create C++ ray tracer
-        self.tracer = raytracer.RayTracer3D(self.iono_grid, self.geomag, self.config)
+            # Default ray tracing configuration
+            self.config = raytracer.RayTracingConfig()
+            # Moderately optimized parameters (2026-02-13)
+            # Conservative to avoid stack overflow from recursive integrate_step
+            self.config.tolerance = 1e-6              # Slightly relaxed from 1e-7
+            self.config.initial_step_km = 1.0         # Moderate increase from 0.5
+            self.config.min_step_km = 0.05            # Slight increase from 0.01
+            self.config.max_step_km = 20.0            # Increased from 10.0
+            self.config.max_path_length_km = 5000.0   # NVIS range
+            self.config.max_steps = 50000             # Safety limit
+            self.config.calculate_absorption = False  # TODO: Fix D-region model
+            self.config.mode = raytracer.Mode.O_MODE  # O-mode default for NVIS
 
-        self.logger.info(f"Ray tracer initialized: {len(lat)}×{len(lon)}×{len(alt)} grid")
+            # Create C++ ray tracer
+            self.tracer = raytracer.RayTracer3D(self.iono_grid, self.geomag, self.config)
+
+            self.logger.info(f"Ray tracer initialized: {len(lat)}×{len(lon)}×{len(alt)} grid")
+
+        except Exception as e:
+            raise RayTracerError(f"Failed to initialize ray tracer: {e}") from e
 
     def trace_ray(
         self,

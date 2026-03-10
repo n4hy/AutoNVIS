@@ -374,22 +374,82 @@ class AutoNVISFilter:
         """
         self.filter.apply_inflation(factor)
 
-    def save_checkpoint(self, filepath: str):
+    def save_checkpoint(self, checkpoint_dir: str, timestamp: Optional[datetime] = None) -> str:
         """
-        Save filter state to checkpoint file
+        Save filter state to checkpoint file.
+
+        Args:
+            checkpoint_dir: Directory for checkpoint files
+            timestamp: Optional timestamp (defaults to now)
+
+        Returns:
+            Path to saved checkpoint file
+        """
+        from .checkpoint_manager import CheckpointManager
+
+        manager = CheckpointManager(checkpoint_dir)
+        checkpoint_path = manager.save_checkpoint(self, timestamp)
+        return str(checkpoint_path)
+
+    def load_checkpoint(self, filepath: str) -> None:
+        """
+        Load filter state from checkpoint file.
 
         Args:
             filepath: Path to checkpoint file
         """
-        # TODO: Implement checkpoint save/load in C++ layer
-        raise NotImplementedError("Checkpoint persistence not yet implemented")
+        from .checkpoint_manager import CheckpointManager, restore_filter_from_checkpoint
+        from pathlib import Path
 
-    def load_checkpoint(self, filepath: str):
+        filepath = Path(filepath)
+        manager = CheckpointManager(filepath.parent)
+        checkpoint_data = manager.load_checkpoint(filepath)
+        restore_filter_from_checkpoint(self, checkpoint_data)
+
+    @classmethod
+    def from_checkpoint(
+        cls,
+        filepath: str,
+        alpha: float = 1e-3,
+        beta: float = 2.0,
+        kappa: float = 0.0,
+        uncertainty_threshold: float = 1e12,
+        localization_radius_km: float = 500.0
+    ) -> 'AutoNVISFilter':
         """
-        Load filter state from checkpoint file
+        Create filter instance from checkpoint file.
 
         Args:
             filepath: Path to checkpoint file
+            alpha, beta, kappa: UKF parameters
+            uncertainty_threshold: Smoother activation threshold
+            localization_radius_km: Localization radius
+
+        Returns:
+            Restored AutoNVISFilter instance
         """
-        # TODO: Implement checkpoint save/load in C++ layer
-        raise NotImplementedError("Checkpoint persistence not yet implemented")
+        from .checkpoint_manager import CheckpointManager, restore_filter_from_checkpoint
+        from pathlib import Path
+
+        filepath = Path(filepath)
+        manager = CheckpointManager(filepath.parent)
+        checkpoint_data = manager.load_checkpoint(filepath)
+
+        config = checkpoint_data.get('config', {})
+
+        # Create filter with checkpoint dimensions
+        filter_instance = cls(
+            n_lat=config.get('n_lat', len(checkpoint_data['lat_grid'])),
+            n_lon=config.get('n_lon', len(checkpoint_data['lon_grid'])),
+            n_alt=config.get('n_alt', len(checkpoint_data['alt_grid'])),
+            alpha=alpha,
+            beta=beta,
+            kappa=kappa,
+            uncertainty_threshold=config.get('uncertainty_threshold', uncertainty_threshold),
+            localization_radius_km=config.get('localization_radius_km', localization_radius_km)
+        )
+
+        # Restore state from checkpoint
+        restore_filter_from_checkpoint(filter_instance, checkpoint_data)
+
+        return filter_instance

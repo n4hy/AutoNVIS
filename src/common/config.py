@@ -257,6 +257,33 @@ class NVISIngestionConfig:
 
 
 @dataclass
+class CheckpointConfig:
+    """Configuration for filter state checkpointing"""
+
+    # Enable/disable checkpointing
+    enabled: bool = True
+
+    # Checkpoint interval (in filter cycles)
+    interval_cycles: int = 1  # Save every cycle
+
+    # Maximum number of checkpoints to retain
+    max_checkpoints: int = 48  # 12 hours at 15-min cycles
+
+    # Compression settings
+    compression: str = "gzip"  # "gzip", "lzf", or None
+    compression_level: int = 4  # 1-9 for gzip
+
+    # Include smoother history in checkpoints
+    include_smoother_history: bool = True
+
+    # Auto-cleanup of old checkpoints
+    auto_cleanup: bool = True
+
+    # Checkpoint file prefix
+    prefix: str = "checkpoint"
+
+
+@dataclass
 class AutoNVISConfig:
     """Master configuration for Auto-NVIS system"""
 
@@ -267,6 +294,7 @@ class AutoNVISConfig:
     supervisor: SupervisorConfig = field(default_factory=SupervisorConfig)
     propagation: PropagationConfig = field(default_factory=PropagationConfig)
     nvis_ingestion: NVISIngestionConfig = field(default_factory=NVISIngestionConfig)
+    checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
 
     # Paths
     data_dir: Path = field(default_factory=lambda: Path("/data"))
