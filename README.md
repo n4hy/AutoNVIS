@@ -280,6 +280,9 @@ python3 demo_standalone.py
 - Mock test infrastructure (MockMessageQueueClient)
 
 ⏸️ **Remaining Tasks:**
+- Fix 15 failing unit tests (see `CLAUDE.md` for details):
+  - GloTEC Client: 2 mock/fetch issues
+  - Propagation Service: 13 API mismatches (method names, grid shapes)
 - Complete TEC ray tracer C++ bindings for production use
 - Tune historical validation thresholds with real event data
 - GPU acceleration for large-scale operations
