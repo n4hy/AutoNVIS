@@ -156,13 +156,22 @@ class TestGloTECClient:
     @pytest.mark.asyncio
     async def test_fetch_index_success(self, client, sample_index):
         """Test successful index fetch."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value=sample_index)
 
-        with patch('aiohttp.ClientSession') as mock_session:
-            mock_session.return_value.__aenter__.return_value.get.return_value.__aenter__.return_value = mock_response
+        mock_get_cm = AsyncMock()
+        mock_get_cm.__aenter__.return_value = mock_response
+        mock_get_cm.__aexit__.return_value = None
 
+        mock_session_instance = MagicMock()
+        mock_session_instance.get.return_value = mock_get_cm
+
+        mock_session_cm = AsyncMock()
+        mock_session_cm.__aenter__.return_value = mock_session_instance
+        mock_session_cm.__aexit__.return_value = None
+
+        with patch('src.ingestion.space_weather.glotec_client.aiohttp.ClientSession', return_value=mock_session_cm):
             index = await client.fetch_index()
 
             assert index is not None
@@ -173,12 +182,21 @@ class TestGloTECClient:
     @pytest.mark.asyncio
     async def test_fetch_index_http_error(self, client):
         """Test index fetch with HTTP error."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status = 500
 
-        with patch('aiohttp.ClientSession') as mock_session:
-            mock_session.return_value.__aenter__.return_value.get.return_value.__aenter__.return_value = mock_response
+        mock_get_cm = AsyncMock()
+        mock_get_cm.__aenter__.return_value = mock_response
+        mock_get_cm.__aexit__.return_value = None
 
+        mock_session_instance = MagicMock()
+        mock_session_instance.get.return_value = mock_get_cm
+
+        mock_session_cm = AsyncMock()
+        mock_session_cm.__aenter__.return_value = mock_session_instance
+        mock_session_cm.__aexit__.return_value = None
+
+        with patch('src.ingestion.space_weather.glotec_client.aiohttp.ClientSession', return_value=mock_session_cm):
             index = await client.fetch_index()
 
             assert index is None
@@ -186,13 +204,22 @@ class TestGloTECClient:
     @pytest.mark.asyncio
     async def test_fetch_geojson_success(self, client, sample_geojson):
         """Test successful GeoJSON fetch."""
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value=sample_geojson)
 
-        with patch('aiohttp.ClientSession') as mock_session:
-            mock_session.return_value.__aenter__.return_value.get.return_value.__aenter__.return_value = mock_response
+        mock_get_cm = AsyncMock()
+        mock_get_cm.__aenter__.return_value = mock_response
+        mock_get_cm.__aexit__.return_value = None
 
+        mock_session_instance = MagicMock()
+        mock_session_instance.get.return_value = mock_get_cm
+
+        mock_session_cm = AsyncMock()
+        mock_session_cm.__aenter__.return_value = mock_session_instance
+        mock_session_cm.__aexit__.return_value = None
+
+        with patch('src.ingestion.space_weather.glotec_client.aiohttp.ClientSession', return_value=mock_session_cm):
             result = await client.fetch_geojson("/products/glotec/test.geojson")
 
             assert result is not None
