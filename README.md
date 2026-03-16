@@ -2,11 +2,11 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
-**Version:** 0.4.1 | **Status:** ✅ Production Ready (Filter Core + RTS Smoother + HDF5 Persistence + GIRO Ionosonde + Ray-Traced TEC + Historical Validation + IONORT Ray Tracing + Web Dashboard + Vogler-Hoffmeyer Channel Model) | **Last Updated:** March 15, 2026
+**Version:** 0.4.2 | **Status:** ✅ Production Ready (Filter Core + RTS Smoother + HDF5 Persistence + GIRO Ionosonde + Ray-Traced TEC + Historical Validation + IONORT Ray Tracing + Web Dashboard + Vogler-Hoffmeyer Channel Model) | **Last Updated:** March 16, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
-[![Tests](https://img.shields.io/badge/tests-82%25%20passing-green)]()
-[![Test Suite](https://img.shields.io/badge/tests-291%2F353%20passing-green)]()
+[![Tests](https://img.shields.io/badge/tests-94%25%20passing-brightgreen)]()
+[![Test Suite](https://img.shields.io/badge/tests-401%2F426%20passing-brightgreen)]()
 [![C++](https://img.shields.io/badge/C++-17-blue)]()
 [![Python](https://img.shields.io/badge/Python-3.11+-blue)]()
 [![License](https://img.shields.io/badge/license-TBD-lightgrey)]()
@@ -65,6 +65,13 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 
 **Result**: Continuous, accurate NVIS frequency planning during Solar Cycle 25 volatility.
 
+**New in v0.4.2**: Bug fixes and test infrastructure improvements:
+- **Fixed missing imports** in integration tests (PropagationService, Topics, MockMessageQueueClient)
+- **Fixed numpy dtype error** in QualityTier comparison (string enum values → numeric mapping)
+- **Fixed datetime.utcnow() deprecation** across 6 files (Python 3.12+ compatibility)
+- **Fixed divide-by-zero edge case** in LUF/MUF calculator when usable range is negligible
+- **Test pass rate improved**: 401/426 tests passing (94%, up from 82%)
+
 **New in v0.4.1**: Vogler-Hoffmeyer HF Channel Model integration:
 - **NTIA 90-255 Channel Model**: Wideband HF channel simulation with delay spread, Doppler, and fading
 - **Hybrid Propagation Model**: Ray tracing geometry + statistical fading effects
@@ -108,7 +115,7 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 ✅ **Web Ray Tracer Dashboard** - Real-time browser-based PHaRLAP visualization with REST API
 ✅ **Vogler-Hoffmeyer Channel Model** - NTIA 90-255 wideband HF fading simulation
 ✅ **Hybrid Channel Modeling** - Ray tracing + statistical fading for communications simulation
-✅ **Rigorously Tested** - 353 brutal tests, 82% passing (291/353)
+✅ **Rigorously Tested** - 426 brutal tests, 94% passing (401/426)
 ✅ **Well Documented** - 7,500+ lines of technical documentation
 
 ### System Capabilities
@@ -127,8 +134,8 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 ### Quick Numbers
 
 - **41,000+** lines of production code (C++/Python)
-- **8,000** lines of test code (353 brutal tests)
-- **291/353** tests passing (82% pass rate)
+- **8,000** lines of test code (426 brutal tests)
+- **401/426** tests passing (94% pass rate)
 - **0** filter divergences in validation
 - **100×** memory reduction from localization
 - **~6 min** per filter cycle (full grid)
@@ -236,11 +243,11 @@ python3 demo_standalone.py
 
 **Phase 9: Comprehensive Test Suite** ✅ **COMPLETE**
 - Brutal test runner (`run_brutal_tests.py`) with performance tracking
-- 353 tests across all modules (including validation framework)
+- 426 tests across all modules (including validation framework)
 - CPU stress tests (110s brutal system integration)
 - 15 unit test files + 4 integration test files
 - C++ brutal tests for SR-UKF (7M state variables)
-- Status: ✅ Complete, 291/353 passing (82%)
+- Status: ✅ Complete, 401/426 passing (94%)
 
 **Phase 12: IONORT-Style Ray Tracing** ✅ **COMPLETE**
 - Three numerical integrators (RK4, Adams-Bashforth/Moulton, RK45)
@@ -279,14 +286,14 @@ python3 demo_standalone.py
 
 📊 **Code Statistics:**
 - Total implementation: ~20,000 LOC (C++/Python)
-- Test infrastructure: ~8,000 LOC (353 tests)
+- Test infrastructure: ~8,000 LOC (426 tests)
 - C++ core: ~5,900 LOC (includes ray-traced TEC)
 - Python supervisor: ~4,200 LOC
 - Data ingestion: ~2,800 LOC (includes GIRO/DIDBase)
 - RTS smoother + checkpoints: ~950 LOC
 - IONORT ray tracing: ~4,400 LOC (integrators, homing, visualizations)
 - Historical validation: ~1,400 LOC (event replayer, metrics)
-- Tests: 291/353 passing (82%), 0 divergences
+- Tests: 401/426 passing (94%), 0 divergences
 
 🧪 **Test Suite:**
 - **Brutal test runner** - Performance tracking master runner
@@ -1616,10 +1623,10 @@ python run_brutal_tests.py
 ```
 
 **Test Suite Results (Current)**:
-- **Total Tests**: 353 (291 passing, 62 failing/skipped)
-- **Pass Rate**: 82%
-- **Test Suites**: 19 (15 passing, 4 failing)
-- **Execution Time**: ~180 seconds (3 minutes)
+- **Total Tests**: 426 (401 passing, 15 failing, 10 skipped)
+- **Pass Rate**: 94%
+- **Test Suites**: 19
+- **Execution Time**: ~165 seconds (~3 minutes)
 
 **Performance Benchmarks**:
 | Test Suite | Time | Status | Notes |
@@ -2160,12 +2167,12 @@ stats = gnss_client.statistics
    - RabbitMQ integration
    - Outcome: Real-time TEC data pipeline operational
 
-9. **Phase 9: Comprehensive Test Suite** (Complete - Feb 14, 2026, Updated Mar 10, 2026)
+9. **Phase 9: Comprehensive Test Suite** (Complete - Feb 14, 2026, Updated Mar 16, 2026)
    - Brutal test runner with performance tracking
-   - 353 tests across all modules (including validation)
+   - 426 tests across all modules (including validation)
    - CPU stress tests (110s system integration)
    - C++ brutal tests (7M state variables)
-   - Outcome: 291/353 passing (82%), comprehensive coverage
+   - Outcome: 401/426 passing (94%), comprehensive coverage
 
 10. **Phase 10: Dashboard & Infrastructure Improvements** (Complete - Feb 14, 2026)
    - Web-based GUI dashboard for real-time monitoring
@@ -2197,10 +2204,14 @@ stats = gnss_client.statistics
    - All three displays run independently (no port conflicts)
    - Outcome: Production-ready desktop visualization + native ray tracing
 
-12. **Phase 12: Test Infrastructure Improvements** (Complete - Mar 10, 2026)
+12. **Phase 12: Test Infrastructure Improvements** (Complete - Mar 16, 2026)
     - Mock RabbitMQ infrastructure for offline testing
     - Fixed NVISSounderClient API compatibility
-    - 291/353 tests passing (82%)
+    - Fixed missing imports (PropagationService, Topics, MockMessageQueueClient)
+    - Fixed numpy dtype error in QualityTier comparison
+    - Fixed datetime.utcnow() deprecation (Python 3.12+ compatibility)
+    - Fixed divide-by-zero edge case in LUF/MUF calculator
+    - 401/426 tests passing (94%)
     - Outcome: Tests run without external dependencies
 
 13. **Phase 13: GIRO/DIDBase Ionosonde Integration** (Complete - Mar 10, 2026)
@@ -2270,8 +2281,8 @@ stats = gnss_client.statistics
 | **Historical Validation** | Event replay + metrics | ✅ Implemented |
 | **Memory Efficiency** | <10 GB RAM | ✅ 2 GB with localization |
 | **Cycle Performance** | <15 min per cycle | ✅ ~6 min |
-| **Test Infrastructure** | Comprehensive test suite | ✅ 353 tests |
-| **Test Pass Rate** | >80% passing | ✅ 82% (291/353) |
+| **Test Infrastructure** | Comprehensive test suite | ✅ 426 tests |
+| **Test Pass Rate** | >90% passing | ✅ 94% (401/426) |
 | **CPU Stress Tests** | System integration working | ✅ 110s runtime |
 
 ### Key Milestones
@@ -2283,7 +2294,8 @@ stats = gnss_client.statistics
 - ✅ **Feb 14, 2026**: Dashboard & RabbitMQ vhost support complete
 - ✅ **Feb 16, 2026**: PyQt TEC Display and Space Weather Display applications complete
 - ✅ **Mar 9, 2026**: Web Dashboard Ray Tracer complete (10 REST endpoints, visualizations)
-- ✅ **Mar 10, 2026**: v0.4.0 major release - RTS Smoother, HDF5 Persistence, GIRO Integration, Ray-Traced TEC, Historical Validation (353 tests, 82% pass rate)
+- ✅ **Mar 10, 2026**: v0.4.0 major release - RTS Smoother, HDF5 Persistence, GIRO Integration, Ray-Traced TEC, Historical Validation
+- ✅ **Mar 16, 2026**: v0.4.2 bug fix release - Fixed test infrastructure issues, datetime deprecation, numpy dtype errors, divide-by-zero edge case (401/426 tests, 94% pass rate)
 - 📋 **Jun 2026**: PHaRLAP integration (planned)
 - 📋 **Sep 2026**: Production deployment (planned)
 
@@ -2670,13 +2682,13 @@ If you use Auto-NVIS in your research, please cite:
   - Validation Metrics: ~600 LOC (RMSE, MAE, bias, correlation)
   - Test Suite: ~400 LOC (comprehensive validation)
 - **Data Ingestion**: ~3,500 LOC (GIRO client with 27 stations)
-- **Test Infrastructure**: ~5,500 LOC (353 tests)
+- **Test Infrastructure**: ~5,500 LOC (426 tests)
 - **Documentation**: ~7,000 lines across 35+ documents
 - **Development Time**: 4 months (Phase 1-16)
-- **Test Pass Rate**: 82% (291/353 tests)
+- **Test Pass Rate**: 94% (401/426 tests)
 - **CPU Stress Tests**: 110s brutal system integration ✅
 - **Contributors**: [TBD]
-- **Last Updated**: March 10, 2026
+- **Last Updated**: March 16, 2026
 
 ---
 
@@ -2708,10 +2720,11 @@ A: Yes! The electron density grid can be used with any ray-tracing engine (VOACA
 
 **Q: What is the current test pass rate?**
 
-A: The 291/353 passing rate (82%) reflects a comprehensive "brutal" test suite designed to stress every component to its limits. Current status:
+A: The 401/426 passing rate (94%) reflects a comprehensive "brutal" test suite designed to stress every component to its limits. Current status:
 - **Mock infrastructure**: Tests run without RabbitMQ dependency
 - **New modules**: RTS Smoother, HDF5 Persistence, GIRO, Historical Validation all tested
 - **Skipped tests**: Some tests require h5py, pika, or psutil packages
+- **Remaining failures**: Primarily in propagation service ray tracer tests (15 tests)
 
 The critical path tests (SR-UKF core, mode switching, smoother logic) are at 100% pass rate with 0 divergences. The test suite successfully validates:
 - ✅ CPU stress tests (110s brutal system integration)
@@ -2734,7 +2747,7 @@ This ensures the system can handle real-world solar storms and production worklo
 
 ---
 
-**Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC/Propagation/Ray Tracer Displays + IONORT-Style Ray Tracing + Multi-Hop + Link Budget + Web Ray Tracer Dashboard + RTS Smoother + HDF5 Persistence + GIRO Integration + Ray-Traced TEC + Historical Validation)
-**Last Updated**: March 10, 2026
-**Version**: 0.4.0
+**Status**: ✅ Production Ready (Filter Core + GNSS-TEC Ingestion + TEC/Propagation/Ray Tracer Displays + IONORT-Style Ray Tracing + Multi-Hop + Link Budget + Web Ray Tracer Dashboard + RTS Smoother + HDF5 Persistence + GIRO Integration + Ray-Traced TEC + Historical Validation + Vogler-Hoffmeyer Channel Model)
+**Last Updated**: March 16, 2026
+**Version**: 0.4.2
 **Next Milestone**: PHaRLAP Integration + Performance Optimization (Phases 17-18)
