@@ -240,6 +240,23 @@ class FrequencyRecommender:
             self.logger.warning("Blackout condition: LUF > MUF")
             return []
 
+        # Handle degenerate case where usable range is zero or negligible
+        usable_range = muf_mhz - luf_mhz
+        if usable_range < 0.01:  # Less than 10 kHz usable range
+            self.logger.warning(
+                f"Negligible usable range: {usable_range:.3f} MHz "
+                f"(LUF={luf_mhz:.2f}, MUF={muf_mhz:.2f})"
+            )
+            # Return single frequency at the midpoint with low confidence
+            mid_freq = (luf_mhz + muf_mhz) / 2
+            return [{
+                'frequency_mhz': float(mid_freq),
+                'confidence': 0.3,  # Low confidence due to narrow range
+                'distance_from_fot_mhz': 0.0,
+                'margin_to_muf_mhz': 0.0,
+                'margin_to_luf_mhz': 0.0
+            }]
+
         # Calculate FOT (0.85 * MUF)
         fot = 0.85 * muf_mhz
 
@@ -271,7 +288,8 @@ class FrequencyRecommender:
         for freq in frequencies:
             # Calculate confidence score
             # Higher near FOT, lower near LUF/MUF boundaries
-            dist_from_fot = abs(freq - fot) / (muf_mhz - luf_mhz)
+            # usable_range is guaranteed >= 0.01 by earlier guard
+            dist_from_fot = abs(freq - fot) / usable_range
             confidence = base_confidence * (1.0 - 0.5 * dist_from_fot)
 
             recommendations.append({
