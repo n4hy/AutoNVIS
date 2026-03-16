@@ -1309,6 +1309,123 @@ Channel parameters scale with geomagnetic activity:
 | 5 | 1013 μs | 17.8 Hz | Yes |
 | 7 | 1913 μs | 56.2 Hz | Yes |
 
+### Spread-F Model Integration
+
+The Vogler-Hoffmeyer channel model implementation is integrated from the **spread-f-model** package (`spread-f-model-develop`), providing comprehensive HF channel simulation capabilities.
+
+#### Package Origin
+
+The complete `hifi` package from `spread-f-model-develop` was integrated into AutoNVIS at `src/channel_models/hifi/`. This includes:
+
+| Module | Function |
+|--------|----------|
+| `vogler_hoffmeyer_channel.py` | Core scattering function implementation |
+| `dispersion.py` | Frequency-dependent group delay |
+| `channel_presets.json` | NTIA 90-255 preset configurations |
+| `transmitter.py` / `receiver.py` | SC-FDE transceiver components |
+| `ldpc.py` | IEEE 802.11n LDPC codec |
+| `modulator.py` | BPSK through 64-QAM modulation |
+| `sync.py` | Timing and CFO synchronization |
+| `streaming_receiver.py` | Real-time sample processing |
+
+#### Spread-F Activation Paths
+
+Spread-F effects are activated through **four independent paths**:
+
+1. **Kp Index Threshold** (Kp ≥ 5):
+   ```python
+   # In ray_channel_mapper.py
+   spread_f = conditions.spread_f_present or kp_index >= 5
+   ```
+
+2. **Explicit Condition Flag**:
+   ```python
+   conditions = ChannelConditions(
+       region="auroral",
+       spread_f_present=True,  # Direct activation
+       ...
+   )
+   ```
+
+3. **Storm Disturbance Level**:
+   ```python
+   conditions = ChannelConditions(
+       disturbance_level=DisturbanceLevel.STORM,  # Triggers spread-F
+       ...
+   )
+   ```
+
+4. **Auroral Spread-F Preset**:
+   ```python
+   model = create_channel_model(preset='auroral_spread_f')
+   ```
+
+#### Spread-F Physical Mechanism
+
+When spread-F is enabled, the channel applies **random amplitude modulation** to multipath tap gains, simulating ionospheric irregularity scattering:
+
+```python
+# In vogler_hoffmeyer_channel.py
+if self.config.spread_f_enabled:
+    # Random amplitude modulation simulates spread-F scattering
+    spread_factor = self.rng.uniform(0.1, 1.0, num_taps)
+    tap_gains *= spread_factor
+```
+
+This produces:
+- **Time-varying amplitude fluctuations** on each multipath component
+- **Increased delay spread** from diffuse scattering
+- **Decorrelation** between successive channel realizations
+- **Signal dispersion** characteristic of equatorial/auroral spread-F
+
+#### Integration Data Flow
+
+```
+Ray Tracer Output → RayToChannelMapper → ChannelConfig (with spread_f_enabled)
+                         ↓
+                    Kp Index ≥ 5?
+                         ↓
+                   spread_f = True
+                         ↓
+              VoglerHoffmeyerChannel.process()
+                         ↓
+                 Tap gain modulation
+                         ↓
+              Faded I/Q output samples
+```
+
+#### Complete Integration Example
+
+```python
+from channel_models import RayToChannelMapper, VoglerHoffmeyerModel
+from channel_models.base import ChannelConditions, Region, DisturbanceLevel
+import numpy as np
+
+# Method 1: Automatic activation via Kp index
+mapper = RayToChannelMapper(sample_rate=1e6)
+ray_paths = [{'apex_altitude': 300, 'path_length': 600, 'reflected': True}]
+
+# Kp=6 automatically enables spread-F
+config = mapper.map_rays_to_channel(ray_paths, kp_index=6.0)
+print(f"Spread-F enabled: {config.config.spread_f_enabled}")  # True
+
+# Method 2: Explicit activation via conditions
+conditions = ChannelConditions(
+    region=Region.AURORAL,
+    disturbance_level=DisturbanceLevel.STORM,
+    spread_f_present=True,
+    kp_index=7.0,
+    solar_flux=150.0
+)
+
+model = VoglerHoffmeyerModel(sample_rate=1e6)
+model.configure(conditions)
+
+# Process samples through spread-F channel
+tx = np.random.randn(1024) + 1j * np.random.randn(1024)
+rx = model.process_samples(tx)  # Spread-F fading applied
+```
+
 ### Package Structure
 
 ```
