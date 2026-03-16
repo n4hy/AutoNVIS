@@ -2,7 +2,7 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
-**Version:** 0.4.0 | **Status:** ✅ Production Ready (Filter Core + RTS Smoother + HDF5 Persistence + GIRO Ionosonde + Ray-Traced TEC + Historical Validation + IONORT Ray Tracing + Web Dashboard) | **Last Updated:** March 10, 2026
+**Version:** 0.4.1 | **Status:** ✅ Production Ready (Filter Core + RTS Smoother + HDF5 Persistence + GIRO Ionosonde + Ray-Traced TEC + Historical Validation + IONORT Ray Tracing + Web Dashboard + Vogler-Hoffmeyer Channel Model) | **Last Updated:** March 15, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-82%25%20passing-green)]()
@@ -33,6 +33,7 @@
 - [Web Dashboard Ray Tracer](#9-web-dashboard-ray-tracer)
 - [IONORT-Style Features](#10-ionort-style-features)
   - [Python-C++ Integration Layer](#11-python-c-integration-layer)
+- [Vogler-Hoffmeyer Channel Model](#12-vogler-hoffmeyer-channel-model)
 - [Key Innovations](#key-innovations)
 - [Operational Capabilities](#operational-capabilities)
 - [Building and Testing](#building-and-testing)
@@ -63,6 +64,14 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 - Automatic space weather event response
 
 **Result**: Continuous, accurate NVIS frequency planning during Solar Cycle 25 volatility.
+
+**New in v0.4.1**: Vogler-Hoffmeyer HF Channel Model integration:
+- **NTIA 90-255 Channel Model**: Wideband HF channel simulation with delay spread, Doppler, and fading
+- **Hybrid Propagation Model**: Ray tracing geometry + statistical fading effects
+- **Ray-to-Channel Mapping**: Derives channel parameters from ray path geometry
+- **Preset Configurations**: midlatitude, equatorial, polar, auroral, auroral_spread_f
+- **I/Q Sample Processing**: Apply realistic channel effects to communications signals
+- **Full Report**: See `docs/channel_model/CHANNEL_MODEL_REPORT.md` with validation plots
 
 **New in v0.4.0**: Major enhancements across the system:
 - **RTS Smoother**: Rauch-Tung-Striebel backward pass with square-root formulation for improved state estimates
@@ -97,6 +106,8 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 ✅ **Historical Validation** - Event replayer with comprehensive metrics framework
 ✅ **Professional Visualizations** - Altitude/Range, 3D Geographic, Synthetic Ionogram
 ✅ **Web Ray Tracer Dashboard** - Real-time browser-based PHaRLAP visualization with REST API
+✅ **Vogler-Hoffmeyer Channel Model** - NTIA 90-255 wideband HF fading simulation
+✅ **Hybrid Channel Modeling** - Ray tracing + statistical fading for communications simulation
 ✅ **Rigorously Tested** - 353 brutal tests, 82% passing (291/353)
 ✅ **Well Documented** - 7,500+ lines of technical documentation
 
@@ -115,13 +126,14 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 
 ### Quick Numbers
 
-- **27,500** lines of production code (C++/Python)
+- **41,000+** lines of production code (C++/Python)
 - **8,000** lines of test code (353 brutal tests)
 - **291/353** tests passing (82% pass rate)
 - **0** filter divergences in validation
 - **100×** memory reduction from localization
 - **~6 min** per filter cycle (full grid)
 - **2 GB** RAM usage (production grid)
+- **5 channel presets** (NTIA 90-255 conditions)
 - **3 integrators** (RK4, Adams-Bashforth, RK45 Dormand-Prince)
 - **27 ionosonde stations** (global GIRO network)
 - **4 visualizations** (Altitude/Range, 3D Geographic, Ionogram, Web Dashboard)
@@ -1196,6 +1208,129 @@ def should_use_smoother(self) -> bool:
 - Mode switching: Seamless transitions
 
 **Status**: ✅ Complete and validated (see `docs/python_cpp_integration.md`)
+
+---
+
+## 12. Vogler-Hoffmeyer Channel Model
+
+### Overview
+
+The Vogler-Hoffmeyer HF channel model (NTIA Report 90-255) provides realistic statistical fading simulation for wideband HF communications. When combined with ray tracing, it enables a **hybrid propagation model**:
+
+- **Ray Tracing**: Provides deterministic geometry (path delays, mode structure, angles)
+- **Channel Model**: Applies realistic time-varying fading statistics
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Delay Spread** | 50-2000+ μs multipath spreading |
+| **Doppler Spread** | 0.1-16 Hz fading rate |
+| **Fading Type** | Rayleigh (multipath) or Rician (with LOS) |
+| **Spread-F** | Disturbed ionosphere simulation |
+| **I/Q Processing** | Direct baseband sample processing |
+
+### Preset Configurations
+
+Based on NTIA 90-255 Table 1:
+
+| Preset | Delay Spread | Doppler | Use Case |
+|--------|--------------|---------|----------|
+| `midlatitude` | 50 μs | 0.1 Hz | Stable mid-lat NVIS |
+| `equatorial` | 880 μs | 2.0 Hz | Trans-equatorial |
+| `polar` | 250 μs | 16.0 Hz | High-latitude |
+| `auroral` | 2000 μs | 5.0 Hz | Auroral zone |
+| `auroral_spread_f` | 2000 μs | 5.0 Hz | Disturbed + spread-F |
+
+### Scattering Function Visualization
+
+The scattering function S(τ, f_D) shows power distribution in delay-Doppler space:
+
+![Scattering Functions](docs/channel_model/scattering_functions.png)
+
+### Constellation Impact
+
+QPSK constellation diagrams showing channel effects:
+
+![Constellation](docs/channel_model/constellation_comparison.png)
+
+### Quick Usage
+
+```python
+from channel_models import create_channel_model
+import numpy as np
+
+# Create channel model
+model = create_channel_model(sample_rate=1e6, preset='midlatitude')
+
+# Process I/Q samples
+tx_samples = np.random.randn(1024) + 1j * np.random.randn(1024)
+rx_samples = model.process_samples(tx_samples)
+```
+
+### Integration with Ray Tracing
+
+```python
+from channel_models import RayToChannelMapper
+from channel_models.hifi import VoglerHoffmeyerChannel
+
+# Trace rays
+paths = tracer.trace_nvis(tx_lat=40.0, tx_lon=-105.0, freq_mhz=7.0)
+
+# Map rays to channel parameters
+mapper = RayToChannelMapper(sample_rate=1e6)
+config = mapper.map_rays_to_channel(paths, kp_index=3.0)
+
+# Apply channel effects
+channel = VoglerHoffmeyerChannel(config.config)
+rx_samples = channel.process(tx_samples)
+```
+
+### Via PropagationService
+
+```python
+from propagation.services import PropagationService
+
+service = PropagationService(tx_lat=40.0, tx_lon=-105.0)
+service.initialize_ray_tracer(ne_grid, lat, lon, alt)
+
+# Apply channel effects with ray-derived parameters
+rx = service.apply_channel_effects(tx_samples, freq_mhz=7.0, kp_index=3.0)
+```
+
+### Kp Index Sensitivity
+
+Channel parameters scale with geomagnetic activity:
+
+| Kp | Delay Spread | Doppler | Spread-F |
+|----|--------------|---------|----------|
+| 1 | 116 μs | 1.8 Hz | No |
+| 3 | 195 μs | 5.6 Hz | No |
+| 5 | 1013 μs | 17.8 Hz | Yes |
+| 7 | 1913 μs | 56.2 Hz | Yes |
+
+### Package Structure
+
+```
+src/channel_models/
+├── __init__.py              # Package exports
+├── base.py                  # BaseChannelModel ABC
+├── vogler_hoffmeyer.py      # VH model adapter
+├── ray_channel_mapper.py    # Ray→Channel bridge
+└── hifi/                    # Core channel implementation (18 modules)
+    ├── vogler_hoffmeyer_channel.py
+    ├── dispersion.py
+    ├── channel_presets.json
+    └── ...
+```
+
+### Documentation
+
+Full technical report with validation plots: [`docs/channel_model/CHANNEL_MODEL_REPORT.md`](docs/channel_model/CHANNEL_MODEL_REPORT.md)
+
+**Status**: ✅ Complete and validated
+
+---
 
 ## Key Innovations
 
