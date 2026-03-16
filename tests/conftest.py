@@ -13,7 +13,7 @@ import threading
 import time
 from typing import Dict, List, Callable, Optional, Any
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import Mock, patch, MagicMock
 import json
 import sys
@@ -130,7 +130,7 @@ class MockMessageQueueClient:
 
         message = MockMessage(
             topic=topic,
-            timestamp=datetime.utcnow().isoformat() + 'Z',
+            timestamp=datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             source=source,
             data=data
         )
@@ -303,7 +303,7 @@ def mock_nvis_measurement():
         signal_strength_error=2.0,
         group_delay_error=0.1,
         sounder_id='TEST_001',
-        timestamp=datetime.utcnow().isoformat() + 'Z',
+        timestamp=datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         is_o_mode=True
     )
 

@@ -7,7 +7,7 @@ Defines the abstract interface and data structures for all protocol adapters.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, List, AsyncIterator
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -69,7 +69,7 @@ class NVISMeasurement:
 
         # Set timestamp if not provided
         if not self.timestamp:
-            self.timestamp = datetime.utcnow().isoformat() + 'Z'
+            self.timestamp = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
 @dataclass
@@ -176,5 +176,5 @@ class BaseAdapter(ABC):
 
             return True
 
-        except Exception:
-            return False
+        except (AttributeError, TypeError, ValueError):
+            return False  # Missing or invalid measurement attributes

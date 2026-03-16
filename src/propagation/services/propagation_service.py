@@ -16,7 +16,7 @@ Interfaces:
 import sys
 import logging
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import numpy as np
 
 # Add propagation module to path
@@ -233,7 +233,7 @@ class PropagationService:
             raise RuntimeError("Ray tracer not initialized. Call initialize_ray_tracer() first.")
 
         self.logger.info("Calculating LUF/MUF coverage...")
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         # Calculate multi-frequency coverage
         coverage = self.tracer.calculate_coverage(
@@ -285,7 +285,7 @@ class PropagationService:
             strategy='distributed'
         )
 
-        calculation_time = (datetime.utcnow() - start_time).total_seconds()
+        calculation_time = (datetime.now(timezone.utc) - start_time).total_seconds()
 
         self.logger.info(
             f"LUF/MUF calculated in {calculation_time:.2f}s: "
@@ -306,7 +306,7 @@ class PropagationService:
                 'longitude': self.tx_lon,
                 'altitude_km': self.tx_alt
             },
-            'timestamp_utc': datetime.utcnow().isoformat() + 'Z',
+            'timestamp_utc': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             'calculation_time_sec': calculation_time
         }
 
@@ -371,7 +371,7 @@ class PropagationService:
                 'longitude': self.tx_lon,
                 'altitude_km': self.tx_alt
             },
-            'timestamp_utc': datetime.utcnow().isoformat() + 'Z'
+            'timestamp_utc': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
 
     def get_configuration(self) -> Dict[str, Any]:

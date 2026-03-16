@@ -25,7 +25,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from common.config import GridConfig, AutoNVISConfig
+from common.message_queue import Topics
 from conftest import MockMessageQueueClient
+
+# Import PropagationService only when raytracer is available
+try:
+    from propagation.services.propagation_service import PropagationService
+except ImportError:
+    PropagationService = None
 
 # Check if raytracer is available
 try:
@@ -50,7 +57,7 @@ class TestFullDataPipeline:
         # Setup
         grid_config = GridConfig(lat_step=10.0, lon_step=10.0, alt_step=50.0)
 
-        mq_client = MessageQueueClient()
+        mq_client = MockMessageQueueClient()
         prop_service = PropagationService(
             tx_lat=40.0, tx_lon=-105.0,
             freq_step=1.0

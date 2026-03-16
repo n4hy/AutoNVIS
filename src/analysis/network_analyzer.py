@@ -7,7 +7,7 @@ including information gain, coverage, and optimization recommendations.
 
 import numpy as np
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..common.logging_config import ServiceLogger
 from ..common.message_queue import MessageQueueClient, Topics
@@ -87,7 +87,7 @@ class NetworkAnalyzer:
         )
 
         analysis = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             'network_overview': self._analyze_network_overview(sounders, observations),
             'information_gain': self._analyze_information_gain(observations, prior_sqrt_cov),
             'coverage_analysis': self._analyze_coverage(sounders, observations),
@@ -102,7 +102,7 @@ class NetworkAnalyzer:
         if len(self.analysis_history) > 100:
             self.analysis_history = self.analysis_history[-100:]
 
-        self.last_analysis_time = datetime.utcnow()
+        self.last_analysis_time = datetime.now(timezone.utc)
 
         # Publish to message queue
         if self.mq_client:

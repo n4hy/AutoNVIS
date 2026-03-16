@@ -10,7 +10,7 @@ import pika
 import time
 from typing import Callable, Dict, Any, Optional
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from .logging_config import ServiceLogger
 
 
@@ -128,7 +128,7 @@ class MessageQueueClient:
         """
         message = Message(
             topic=topic,
-            timestamp=datetime.utcnow().isoformat() + 'Z',
+            timestamp=datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             source=source,
             data=data
         )

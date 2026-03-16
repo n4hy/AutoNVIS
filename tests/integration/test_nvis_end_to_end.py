@@ -11,7 +11,7 @@ import pytest
 import asyncio
 import numpy as np
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
@@ -88,7 +88,7 @@ def generate_measurement(sounder: SounderMetadata, tier: QualityTier,
         signal_strength_error=0.0,  # Will be set by quality assessor
         group_delay_error=0.0,
         sounder_id=sounder.sounder_id,
-        timestamp=datetime.utcnow().isoformat() + 'Z',
+        timestamp=datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         is_o_mode=True
     )
 
@@ -405,7 +405,7 @@ class TestMeasurementValidation:
             rx_latitude=40.5, rx_longitude=-104.5, rx_altitude=1600.0,
             frequency=7.5, elevation_angle=85.0, azimuth=45.0,
             hop_distance=75.0, signal_strength=-85.0, group_delay=2.5, snr=20.0,
-            sounder_id='TEST_001', timestamp=datetime.utcnow().isoformat() + 'Z'
+            sounder_id='TEST_001', timestamp=datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         )
 
         assert adapter.validate_measurement(valid_meas) is True
@@ -429,7 +429,7 @@ class TestMeasurementValidation:
             frequency=7.5, elevation_angle=85.0, azimuth=45.0,
             hop_distance=75.0, signal_strength=50.0,  # Invalid: should be negative
             group_delay=2.5, snr=20.0,
-            sounder_id='TEST_001', timestamp=datetime.utcnow().isoformat() + 'Z'
+            sounder_id='TEST_001', timestamp=datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         )
 
         assert adapter.validate_measurement(invalid_meas) is False
@@ -460,8 +460,17 @@ class TestQualityTierDistribution:
 
         # Professional equipment should generally get better tiers
         if professional_tiers and amateur_tiers:
-            prof_avg = np.mean([t.value for t in professional_tiers if hasattr(t, 'value')] or [0])
-            amateur_avg = np.mean([t.value for t in amateur_tiers if hasattr(t, 'value')] or [0])
+            # Map tiers to numeric values for comparison (higher = better)
+            tier_to_numeric = {
+                QualityTier.PLATINUM: 4,
+                QualityTier.GOLD: 3,
+                QualityTier.SILVER: 2,
+                QualityTier.BRONZE: 1,
+            }
+            prof_values = [tier_to_numeric.get(t, 0) for t in professional_tiers]
+            amateur_values = [tier_to_numeric.get(t, 0) for t in amateur_tiers]
+            prof_avg = np.mean(prof_values) if prof_values else 0
+            amateur_avg = np.mean(amateur_values) if amateur_values else 0
             # This is a soft assertion - just verify equipment type is considered
 
 
