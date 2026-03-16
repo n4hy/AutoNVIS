@@ -284,6 +284,39 @@ class CheckpointConfig:
 
 
 @dataclass
+class ChannelModelConfig:
+    """Configuration for HF channel models (Vogler-Hoffmeyer)"""
+
+    # Model selection
+    model_type: str = "vogler_hoffmeyer"  # or "static", "watterson"
+
+    # Sample rate for channel simulation
+    sample_rate: float = 1e6  # Hz (1 MHz default for wideband HF)
+
+    # Enable channel model in propagation service
+    enabled: bool = True
+
+    # Condition mapping
+    use_realtime_conditions: bool = True  # Use ray tracing + space weather
+    default_region: str = "midlatitude"   # Default region if not inferred
+    default_disturbance: str = "moderate"  # quiet, moderate, disturbed, storm
+
+    # Fading parameters (overrides - None = auto from conditions)
+    force_spread_f: Optional[bool] = None  # Force spread-F on/off
+    k_factor: Optional[float] = None       # Rician K-factor (None=Rayleigh)
+    random_seed: Optional[int] = None      # Seed for reproducibility
+
+    # Integration with ray tracing
+    use_ray_derived_modes: bool = True  # Derive modes from ray paths
+    max_modes: int = 3                  # Maximum channel modes
+    min_mode_amplitude: float = 0.1     # Minimum amplitude for mode inclusion
+
+    # Dispersion settings
+    dispersion_enabled: bool = False    # Frequency-dependent group delay
+    carrier_frequency_mhz: float = 10.0  # RF carrier for dispersion calc
+
+
+@dataclass
 class AutoNVISConfig:
     """Master configuration for Auto-NVIS system"""
 
@@ -295,6 +328,7 @@ class AutoNVISConfig:
     propagation: PropagationConfig = field(default_factory=PropagationConfig)
     nvis_ingestion: NVISIngestionConfig = field(default_factory=NVISIngestionConfig)
     checkpoint: CheckpointConfig = field(default_factory=CheckpointConfig)
+    channel_model: ChannelModelConfig = field(default_factory=ChannelModelConfig)
 
     # Paths
     data_dir: Path = field(default_factory=lambda: Path("/data"))
@@ -352,6 +386,25 @@ class AutoNVISConfig:
             weight_historical_quality=quality_weights.get('historical_quality', 0.10)
         )
 
+        # Parse channel model config
+        channel_model_dict = config_dict.get('channel_model', {})
+        channel_model = ChannelModelConfig(
+            model_type=channel_model_dict.get('model_type', 'vogler_hoffmeyer'),
+            sample_rate=channel_model_dict.get('sample_rate', 1e6),
+            enabled=channel_model_dict.get('enabled', True),
+            use_realtime_conditions=channel_model_dict.get('use_realtime_conditions', True),
+            default_region=channel_model_dict.get('default_region', 'midlatitude'),
+            default_disturbance=channel_model_dict.get('default_disturbance', 'moderate'),
+            force_spread_f=channel_model_dict.get('force_spread_f'),
+            k_factor=channel_model_dict.get('k_factor'),
+            random_seed=channel_model_dict.get('random_seed'),
+            use_ray_derived_modes=channel_model_dict.get('use_ray_derived_modes', True),
+            max_modes=channel_model_dict.get('max_modes', 3),
+            min_mode_amplitude=channel_model_dict.get('min_mode_amplitude', 0.1),
+            dispersion_enabled=channel_model_dict.get('dispersion_enabled', False),
+            carrier_frequency_mhz=channel_model_dict.get('carrier_frequency_mhz', 10.0)
+        )
+
         return cls(
             grid=GridConfig(**config_dict.get('grid', {})),
             data_sources=DataSourceConfig(**config_dict.get('data_sources', {})),
@@ -359,6 +412,7 @@ class AutoNVISConfig:
             sr_ukf=SRUKFConfig(**config_dict.get('sr_ukf', {})),
             supervisor=SupervisorConfig(**config_dict.get('supervisor', {})),
             nvis_ingestion=nvis_ingestion,
+            channel_model=channel_model,
             data_dir=Path(config_dict.get('data_dir', '/data')),
             config_dir=Path(config_dict.get('config_dir', '/config'))
         )
@@ -372,6 +426,7 @@ class AutoNVISConfig:
             'sr_ukf': self.sr_ukf.__dict__,
             'supervisor': self.supervisor.__dict__,
             'nvis_ingestion': self.nvis_ingestion.__dict__,
+            'channel_model': self.channel_model.__dict__,
             'data_dir': str(self.data_dir),
             'config_dir': str(self.config_dir)
         }

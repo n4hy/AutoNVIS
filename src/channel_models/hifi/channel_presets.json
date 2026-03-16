@@ -1,0 +1,247 @@
+{
+  "_comment": "HF Channel Model Preset Configurations based on NTIA Report 90-255 (Vogler & Hoffmeyer, 1990)",
+  "_reference": "Table 1 and Figures 4-9 in the paper provide example parameters for various ionospheric conditions",
+
+  "presets": {
+    "equatorial": {
+      "_description": "Equatorial path - Single F-layer mode with large delay spread. Typical of trans-equatorial HF propagation. Reference: Paper Table 1, Figure 4",
+      "sample_rate": 1000000,
+      "spread_f_enabled": false,
+      "modes": [
+        {
+          "name": "F-layer (equatorial)",
+          "amplitude": 1.0,
+          "floor_amplitude": 0.01,
+          "tau_L": 0.0,
+          "sigma_tau": 880.0,
+          "sigma_c": 220.0,
+          "sigma_D": 2.0,
+          "doppler_shift": 0.0,
+          "doppler_shift_min_delay": 0.0,
+          "correlation_type": "gaussian"
+        }
+      ]
+    },
+
+    "polar": {
+      "_description": "Polar path - Multiple modes (E-layer and F-layer). Larger Doppler spreads due to auroral activity. Reference: Paper Table 1, Figure 5",
+      "sample_rate": 1000000,
+      "spread_f_enabled": false,
+      "modes": [
+        {
+          "name": "E-layer (polar)",
+          "amplitude": 0.7,
+          "floor_amplitude": 0.01,
+          "tau_L": 0.0,
+          "sigma_tau": 250.0,
+          "sigma_c": 100.0,
+          "sigma_D": 16.0,
+          "doppler_shift": 0.0,
+          "doppler_shift_min_delay": 0.0,
+          "correlation_type": "gaussian"
+        },
+        {
+          "name": "F-layer low-ray (polar)",
+          "amplitude": 1.0,
+          "floor_amplitude": 0.01,
+          "tau_L": 300.0,
+          "sigma_tau": 400.0,
+          "sigma_c": 135.0,
+          "sigma_D": 7.0,
+          "doppler_shift": 0.0,
+          "doppler_shift_min_delay": 0.0,
+          "correlation_type": "gaussian"
+        }
+      ]
+    },
+
+    "midlatitude": {
+      "_description": "Mid-latitude short path - Narrow delay spread, very small Doppler spread (stable ionosphere). Shows delay-Doppler coupling. Reference: Paper Table 1, Figure 6",
+      "sample_rate": 1000000,
+      "spread_f_enabled": false,
+      "modes": [
+        {
+          "name": "F-layer (mid-latitude)",
+          "amplitude": 1.0,
+          "floor_amplitude": 0.01,
+          "tau_L": 0.0,
+          "sigma_tau": 50.0,
+          "sigma_c": 25.0,
+          "sigma_D": 0.1,
+          "doppler_shift": 0.2,
+          "doppler_shift_min_delay": -0.2,
+          "correlation_type": "gaussian"
+        }
+      ]
+    },
+
+    "auroral_spread_f": {
+      "_description": "Auroral spread-F - Very large delay spread with spread-F enabled for diffuse scattering. Typical of disturbed ionospheric conditions. Reference: Paper Table 1, Figures 7-8",
+      "sample_rate": 1000000,
+      "spread_f_enabled": true,
+      "modes": [
+        {
+          "name": "F-layer (auroral spread-F)",
+          "amplitude": 1.0,
+          "floor_amplitude": 0.01,
+          "tau_L": 0.0,
+          "sigma_tau": 2000.0,
+          "sigma_c": 500.0,
+          "sigma_D": 5.0,
+          "doppler_shift": 0.0,
+          "doppler_shift_min_delay": 0.0,
+          "correlation_type": "exponential"
+        }
+      ]
+    },
+
+    "auroral_complex": {
+      "_description": "Auroral complex - Multiple overlapping modes, narrow individual spreads but complex combined response. Reference: Paper Table 1, Figure 9",
+      "sample_rate": 1000000,
+      "spread_f_enabled": false,
+      "modes": [
+        {
+          "name": "Mode 1 (auroral)",
+          "amplitude": 1.0,
+          "floor_amplitude": 0.01,
+          "tau_L": 0.0,
+          "sigma_tau": 60.0,
+          "sigma_c": 25.0,
+          "sigma_D": 0.1,
+          "doppler_shift": 0.2,
+          "doppler_shift_min_delay": -0.1,
+          "correlation_type": "gaussian"
+        },
+        {
+          "name": "Mode 2 (auroral)",
+          "amplitude": 0.8,
+          "floor_amplitude": 0.01,
+          "tau_L": 80.0,
+          "sigma_tau": 80.0,
+          "sigma_c": 40.0,
+          "sigma_D": 0.2,
+          "doppler_shift": -0.1,
+          "doppler_shift_min_delay": 0.1,
+          "correlation_type": "gaussian"
+        },
+        {
+          "name": "Mode 3 (auroral)",
+          "amplitude": 0.6,
+          "floor_amplitude": 0.01,
+          "tau_L": 180.0,
+          "sigma_tau": 100.0,
+          "sigma_c": 50.0,
+          "sigma_D": 0.3,
+          "doppler_shift": 0.0,
+          "doppler_shift_min_delay": 0.0,
+          "correlation_type": "gaussian"
+        }
+      ]
+    },
+
+    "watterson_narrowband": {
+      "_description": "Watterson-compatible narrowband mode - Approximates CCIR Report 549 Watterson model for narrowband signals (<12 kHz). Useful for comparison with legacy models.",
+      "sample_rate": 48000,
+      "spread_f_enabled": false,
+      "modes": [
+        {
+          "name": "Narrowband mode",
+          "amplitude": 1.0,
+          "floor_amplitude": 0.01,
+          "tau_L": 0.0,
+          "sigma_tau": 2.0,
+          "sigma_c": 1.0,
+          "sigma_D": 0.5,
+          "doppler_shift": 0.0,
+          "doppler_shift_min_delay": 0.0,
+          "correlation_type": "gaussian"
+        }
+      ]
+    },
+
+    "benign": {
+      "_description": "Benign conditions - Minimal distortion for testing. Very small delay and Doppler spreads.",
+      "sample_rate": 1000000,
+      "spread_f_enabled": false,
+      "modes": [
+        {
+          "name": "Benign",
+          "amplitude": 1.0,
+          "floor_amplitude": 0.001,
+          "tau_L": 0.0,
+          "sigma_tau": 5.0,
+          "sigma_c": 2.5,
+          "sigma_D": 0.05,
+          "doppler_shift": 0.0,
+          "doppler_shift_min_delay": 0.0,
+          "correlation_type": "gaussian"
+        }
+      ]
+    },
+
+    "severe": {
+      "_description": "Severe conditions - Maximum distortion for stress testing. Very large delay and Doppler spreads.",
+      "sample_rate": 1000000,
+      "spread_f_enabled": true,
+      "modes": [
+        {
+          "name": "Severe mode 1",
+          "amplitude": 1.0,
+          "floor_amplitude": 0.01,
+          "tau_L": 0.0,
+          "sigma_tau": 3000.0,
+          "sigma_c": 750.0,
+          "sigma_D": 20.0,
+          "doppler_shift": 5.0,
+          "doppler_shift_min_delay": -5.0,
+          "correlation_type": "exponential"
+        },
+        {
+          "name": "Severe mode 2",
+          "amplitude": 0.8,
+          "floor_amplitude": 0.01,
+          "tau_L": 1500.0,
+          "sigma_tau": 2000.0,
+          "sigma_c": 500.0,
+          "sigma_D": 15.0,
+          "doppler_shift": -3.0,
+          "doppler_shift_min_delay": 3.0,
+          "correlation_type": "exponential"
+        }
+      ]
+    }
+  },
+
+  "parameter_descriptions": {
+    "sample_rate": "Sample rate in Hz. Higher rates needed for wider bandwidth signals.",
+    "spread_f_enabled": "Enable spread-F simulation (random amplitude modulation) for disturbed ionosphere.",
+    "modes": "Array of propagation modes (E-layer, F-layer low-ray, F-layer high-ray).",
+
+    "mode_parameters": {
+      "name": "Descriptive name for the mode",
+      "amplitude": "A - Relative mode amplitude [0, 1]. Paper Eq. (3).",
+      "floor_amplitude": "A_fl - Receiver threshold/floor level. Paper Eq. (4d), (5d).",
+      "tau_L": "Minimum delay time in microseconds. Paper Eq. (3).",
+      "sigma_tau": "Total delay spread = tau_U - tau_L in microseconds. Paper Eq. (3), Table 1.",
+      "sigma_c": "Carrier delay subinterval = tau_c - tau_L in microseconds. Paper Eq. (3).",
+      "sigma_D": "Doppler spread half-width in Hz. Paper Eq. (7), (10), Table 1.",
+      "doppler_shift": "f_s - Doppler shift at carrier delay in Hz. Paper Eq. (15).",
+      "doppler_shift_min_delay": "f_sL - Doppler shift at minimum delay in Hz. Paper Eq. (15b).",
+      "correlation_type": "Doppler correlation type: 'gaussian' (Eq. 7) or 'exponential' (Eq. 10)."
+    }
+  },
+
+  "typical_values": {
+    "_comment": "Typical parameter ranges from Table 1 in the paper",
+    "delay_spread_us": {
+      "benign": "5-50",
+      "moderate": "50-500",
+      "severe": "500-3000+"
+    },
+    "doppler_spread_hz": {
+      "quiet": "0.05-0.5",
+      "moderate": "0.5-5",
+      "disturbed": "5-20+"
+    }
+  }
+}

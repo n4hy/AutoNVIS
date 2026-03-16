@@ -42,6 +42,9 @@ pglive>=0.7.0
 h5py>=3.8.0
 netCDF4>=1.6.0
 
+# Channel model acceleration (optional but recommended for 3x speedup)
+numba>=0.50.0
+
 # Monitoring and metrics
 prometheus-client>=0.17.0
 

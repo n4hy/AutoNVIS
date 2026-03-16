@@ -4,6 +4,9 @@ Propagation Service - Ray Tracing Integration for Auto-NVIS
 This service integrates the native C++ ray tracer with the SR-UKF filter
 to produce real-time LUF/MUF predictions and propagation products.
 
+Also integrates the Vogler-Hoffmeyer HF channel model for realistic
+communications simulation with time-varying fading effects.
+
 Interfaces:
     - Input: Electron density grid from SR-UKF filter
     - Output: LUF/MUF products published to RabbitMQ
@@ -31,6 +34,19 @@ except ImportError:
     sys.path.insert(0, str(products_path))
     from luf_muf_calculator import LUFMUFCalculator, FrequencyRecommender
 
+# Import channel model components
+try:
+    from channel_models import (
+        VoglerHoffmeyerModel,
+        RayToChannelMapper,
+        ChannelConditions,
+        IonosphericRegion,
+        DisturbanceLevel
+    )
+    CHANNEL_MODEL_AVAILABLE = True
+except ImportError:
+    CHANNEL_MODEL_AVAILABLE = False
+
 
 class PropagationService:
     """
@@ -53,7 +69,9 @@ class PropagationService:
         elevation_step: float = 2.0,
         azimuth_step: float = 15.0,
         absorption_threshold_db: float = 50.0,
-        snr_threshold_db: float = 10.0
+        snr_threshold_db: float = 10.0,
+        channel_model_enabled: bool = True,
+        channel_sample_rate: float = 1e6
     ):
         """
         Initialize propagation service.
@@ -71,6 +89,8 @@ class PropagationService:
             azimuth_step: Azimuth step (degrees)
             absorption_threshold_db: Maximum acceptable absorption (dB)
             snr_threshold_db: Minimum acceptable SNR (dB)
+            channel_model_enabled: Enable Vogler-Hoffmeyer channel model
+            channel_sample_rate: Sample rate for channel model (Hz)
         """
         self.logger = logging.getLogger(__name__)
 
@@ -106,10 +126,43 @@ class PropagationService:
         # Frequency recommender
         self.recommender = FrequencyRecommender()
 
+        # Channel model components
+        self.channel_model_enabled = channel_model_enabled and CHANNEL_MODEL_AVAILABLE
+        self.channel_sample_rate = channel_sample_rate
+        self._channel_model: Optional['VoglerHoffmeyerModel'] = None
+        self._ray_mapper: Optional['RayToChannelMapper'] = None
+        self._current_kp_index: float = 2.0  # Default Kp
+
+        if self.channel_model_enabled:
+            self._initialize_channel_model()
+
         self.logger.info(
             f"PropagationService initialized: TX=({tx_lat:.2f}, {tx_lon:.2f}), "
-            f"Freq={freq_min}-{freq_max} MHz, Elev={elevation_min}-{elevation_max}°"
+            f"Freq={freq_min}-{freq_max} MHz, Elev={elevation_min}-{elevation_max}°, "
+            f"Channel model={'enabled' if self.channel_model_enabled else 'disabled'}"
         )
+
+    def _initialize_channel_model(self) -> None:
+        """Initialize the Vogler-Hoffmeyer channel model components."""
+        if not CHANNEL_MODEL_AVAILABLE:
+            self.logger.warning("Channel model not available - module not found")
+            return
+
+        try:
+            self._channel_model = VoglerHoffmeyerModel(
+                sample_rate=self.channel_sample_rate
+            )
+            self._ray_mapper = RayToChannelMapper(
+                sample_rate=self.channel_sample_rate,
+                max_modes=3
+            )
+            self.logger.info(
+                f"Channel model initialized: {self._channel_model.name}, "
+                f"sample_rate={self.channel_sample_rate/1e6:.3f} MHz"
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to initialize channel model: {e}")
+            self.channel_model_enabled = False
 
     def initialize_ray_tracer(
         self,
@@ -349,5 +402,181 @@ class PropagationService:
                 'absorption_db': self.absorption_threshold_db,
                 'snr_db': self.snr_threshold_db
             },
-            'tracer_initialized': self.tracer is not None
+            'tracer_initialized': self.tracer is not None,
+            'channel_model': {
+                'enabled': self.channel_model_enabled,
+                'available': CHANNEL_MODEL_AVAILABLE,
+                'sample_rate_hz': self.channel_sample_rate,
+                'model_name': self._channel_model.name if self._channel_model else None,
+                'configured': self._channel_model.is_configured if self._channel_model else False
+            }
         }
+
+    def set_kp_index(self, kp_index: float) -> None:
+        """
+        Set the current Kp index for channel model configuration.
+
+        Args:
+            kp_index: Planetary K index (0-9)
+        """
+        self._current_kp_index = max(0.0, min(9.0, kp_index))
+        self.logger.debug(f"Kp index set to {self._current_kp_index:.1f}")
+
+    def apply_channel_effects(
+        self,
+        samples: np.ndarray,
+        freq_mhz: float,
+        kp_index: Optional[float] = None,
+        use_ray_paths: bool = True
+    ) -> np.ndarray:
+        """
+        Apply realistic channel fading to I/Q samples.
+
+        Uses the Vogler-Hoffmeyer channel model configured from ray tracing
+        results to apply:
+            - Multipath delay spread
+            - Doppler spread and shift
+            - Time-varying Rayleigh/Rician fading
+            - Optional spread-F effects
+
+        Args:
+            samples: Complex I/Q input samples
+            freq_mhz: Operating frequency in MHz
+            kp_index: Optional Kp index override (uses stored value if None)
+            use_ray_paths: If True, derive channel from ray tracing
+
+        Returns:
+            Complex I/Q output samples with channel effects
+
+        Raises:
+            RuntimeError: If channel model not enabled or tracer not initialized
+
+        Example:
+            >>> output = service.apply_channel_effects(input_iq, freq_mhz=7.0)
+        """
+        if not self.channel_model_enabled:
+            raise RuntimeError("Channel model not enabled")
+
+        if self._channel_model is None:
+            raise RuntimeError("Channel model not initialized")
+
+        kp = kp_index if kp_index is not None else self._current_kp_index
+
+        # Configure channel from ray tracing if available and requested
+        if use_ray_paths and self.tracer is not None:
+            self._configure_channel_from_rays(freq_mhz, kp)
+        elif not self._channel_model.is_configured:
+            # Use default configuration based on Kp
+            self._configure_channel_from_conditions(kp)
+
+        # Process samples through channel
+        output = self._channel_model.process_samples(samples)
+
+        return output
+
+    def _configure_channel_from_rays(
+        self,
+        freq_mhz: float,
+        kp_index: float
+    ) -> None:
+        """
+        Configure channel model from ray tracing results.
+
+        Args:
+            freq_mhz: Operating frequency in MHz
+            kp_index: Current Kp index
+        """
+        if self.tracer is None or self._ray_mapper is None:
+            return
+
+        # Trace rays for this frequency
+        paths = self.tracer.trace_nvis(
+            tx_lat=self.tx_lat,
+            tx_lon=self.tx_lon,
+            freq_mhz=freq_mhz,
+            elevation_min=self.elevation_min,
+            elevation_max=self.elevation_max,
+            elevation_step=self.elevation_step,
+            azimuth_step=self.azimuth_step
+        )
+
+        # Map rays to channel configuration
+        mapped = self._ray_mapper.map_rays_to_channel(
+            ray_paths=paths,
+            kp_index=kp_index
+        )
+
+        # Create and configure channel from mapped config
+        from channel_models.hifi import VoglerHoffmeyerChannel
+        channel = VoglerHoffmeyerChannel(mapped.config)
+
+        # Update internal model state to use this configuration
+        self._channel_model._config = mapped.config
+        self._channel_model._channel = channel
+
+        self.logger.debug(
+            f"Channel configured from {len(paths)} rays, "
+            f"{len(mapped.config.modes)} modes, quality={mapped.mapping_quality:.2f}"
+        )
+
+    def _configure_channel_from_conditions(self, kp_index: float) -> None:
+        """
+        Configure channel model from conditions when rays unavailable.
+
+        Args:
+            kp_index: Current Kp index
+        """
+        if self._channel_model is None:
+            return
+
+        # Build conditions from Kp
+        if kp_index < 2:
+            disturbance = DisturbanceLevel.QUIET
+        elif kp_index < 4:
+            disturbance = DisturbanceLevel.MODERATE
+        elif kp_index < 6:
+            disturbance = DisturbanceLevel.DISTURBED
+        else:
+            disturbance = DisturbanceLevel.STORM
+
+        conditions = ChannelConditions(
+            region=IonosphericRegion.MIDLATITUDE,
+            disturbance_level=disturbance,
+            kp_index=kp_index,
+            spread_f_present=(kp_index >= 5)
+        )
+
+        self._channel_model.configure(conditions)
+        self.logger.debug(f"Channel configured from conditions: Kp={kp_index:.1f}")
+
+    def get_channel_response(self) -> Optional[Dict[str, Any]]:
+        """
+        Get current channel model response parameters.
+
+        Returns:
+            Dictionary with channel response parameters, or None if not configured
+        """
+        if not self.channel_model_enabled or self._channel_model is None:
+            return None
+
+        if not self._channel_model.is_configured:
+            return None
+
+        response = self._channel_model.get_channel_response()
+        return {
+            'delay_us': response.delay_us,
+            'delay_spread_us': response.delay_spread_us,
+            'doppler_shift_hz': response.doppler_shift_hz,
+            'doppler_spread_hz': response.doppler_spread_hz,
+            'path_loss_db': response.path_loss_db,
+            'fading_type': response.fading_type.value,
+            'k_factor': response.k_factor,
+            'mode_name': response.mode_name,
+            'layer': response.layer
+        }
+
+    def reset_channel(self) -> None:
+        """Reset channel model state for processing a new signal."""
+        if self._channel_model is not None:
+            self._channel_model.reset()
+            self.logger.debug("Channel model reset")
