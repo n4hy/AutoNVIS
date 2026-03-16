@@ -10,7 +10,7 @@ Modes:
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from enum import Enum
 import sys
@@ -121,14 +121,14 @@ class ModeController:
         # Flux is below threshold
         if self.flux_below_threshold_since is None:
             # First time below threshold, start timer
-            self.flux_below_threshold_since = datetime.utcnow()
+            self.flux_below_threshold_since = datetime.now(timezone.utc)
             self.logger.info(
                 f"Flux below threshold, starting hysteresis timer ({self.hysteresis_sec}s)"
             )
             return False
 
         # Check if enough time has passed
-        elapsed = (datetime.utcnow() - self.flux_below_threshold_since).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - self.flux_below_threshold_since).total_seconds()
 
         if elapsed >= self.hysteresis_sec:
             self.logger.info(

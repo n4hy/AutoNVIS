@@ -3,7 +3,7 @@ Unit tests for mode controller
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from src.supervisor.mode_controller import ModeController, OperationalMode
 
 
@@ -63,7 +63,7 @@ def test_switch_to_quiet_after_hysteresis(mode_controller):
     mode_controller.switch_to_shock_mode(2e-5, "M2.0")
 
     # Simulate hysteresis period
-    mode_controller.flux_below_threshold_since = datetime.utcnow() - timedelta(
+    mode_controller.flux_below_threshold_since = datetime.now(timezone.utc) - timedelta(
         seconds=mode_controller.hysteresis_sec + 1
     )
 
@@ -99,7 +99,7 @@ def test_mode_change_count(mode_controller):
     assert mode_controller.mode_change_count == 1
 
     # Simulate hysteresis and switch back
-    mode_controller.flux_below_threshold_since = datetime.utcnow() - timedelta(
+    mode_controller.flux_below_threshold_since = datetime.now(timezone.utc) - timedelta(
         seconds=700
     )
     mode_controller.switch_to_quiet_mode(5e-6)

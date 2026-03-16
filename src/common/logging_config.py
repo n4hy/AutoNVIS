@@ -8,7 +8,7 @@ for easy aggregation and analysis.
 import logging
 import sys
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 from pathlib import Path
 
@@ -29,7 +29,7 @@ class JSONFormatter(logging.Formatter):
             JSON string
         """
         log_data = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             'level': record.levelname,
             'logger': record.name,
             'message': record.getMessage(),
@@ -182,7 +182,7 @@ class MetricsLogger:
         metric_data = {
             'metric': metric_name,
             'value': value,
-            'timestamp': datetime.utcnow().isoformat() + 'Z'
+            'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
 
         if labels:

@@ -36,7 +36,7 @@ References:
 import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -143,7 +143,7 @@ class RTSSmoother:
             cycle_index: Filter cycle number
         """
         if timestamp is None:
-            timestamp = datetime.utcnow()
+            timestamp = datetime.now(timezone.utc)
 
         state = SmootherState(
             state_prior=state_prior.copy(),

@@ -7,7 +7,7 @@ backward pass implementation.
 
 import pytest
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import sys
 from pathlib import Path
 
@@ -31,7 +31,7 @@ class TestSmootherState:
             state_posterior=np.ones(n),
             sqrt_cov_prior=np.eye(n) * 0.5,
             sqrt_cov_posterior=np.eye(n) * 0.3,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             cycle_index=1
         )
 
@@ -47,7 +47,7 @@ class TestSmootherState:
                 state_posterior=np.ones(5),  # Wrong size
                 sqrt_cov_prior=np.eye(10),
                 sqrt_cov_posterior=np.eye(10),
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             )
 
 
