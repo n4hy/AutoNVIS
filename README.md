@@ -5,8 +5,8 @@
 **Version:** 0.4.2 | **Status:** ✅ Production Ready (Filter Core + RTS Smoother + HDF5 Persistence + GIRO Ionosonde + Ray-Traced TEC + Historical Validation + IONORT Ray Tracing + Web Dashboard + Vogler-Hoffmeyer Channel Model) | **Last Updated:** March 16, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
-[![Tests](https://img.shields.io/badge/tests-94%25%20passing-brightgreen)]()
-[![Test Suite](https://img.shields.io/badge/tests-401%2F426%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-98%25%20passing-brightgreen)]()
+[![Test Suite](https://img.shields.io/badge/tests-417%2F426%20passing-brightgreen)]()
 [![C++](https://img.shields.io/badge/C++-17-blue)]()
 [![Python](https://img.shields.io/badge/Python-3.11+-blue)]()
 [![License](https://img.shields.io/badge/license-TBD-lightgrey)]()
@@ -70,7 +70,9 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 - **Fixed numpy dtype error** in QualityTier comparison (string enum values → numeric mapping)
 - **Fixed datetime.utcnow() deprecation** across 6 files (Python 3.12+ compatibility)
 - **Fixed divide-by-zero edge case** in LUF/MUF calculator when usable range is negligible
-- **Test pass rate improved**: 401/426 tests passing (94%, up from 82%)
+- **Fixed 15 failing unit tests**: GloTEC async mocks, PropagationService API alignment
+- **Implemented Chapman layer test**: Uses ChapmanLayerModel for physics-based Ne grid generation
+- **Test pass rate**: 417/426 tests passing (98%)
 
 **New in v0.4.1**: Vogler-Hoffmeyer HF Channel Model integration:
 - **NTIA 90-255 Channel Model**: Wideband HF channel simulation with delay spread, Doppler, and fading
@@ -280,9 +282,6 @@ python3 demo_standalone.py
 - Mock test infrastructure (MockMessageQueueClient)
 
 ⏸️ **Remaining Tasks:**
-- Fix 15 failing unit tests (see `CLAUDE.md` for details):
-  - GloTEC Client: 2 mock/fetch issues
-  - Propagation Service: 13 API mismatches (method names, grid shapes)
 - Complete TEC ray tracer C++ bindings for production use
 - Tune historical validation thresholds with real event data
 - GPU acceleration for large-scale operations
@@ -1626,8 +1625,8 @@ python run_brutal_tests.py
 ```
 
 **Test Suite Results (Current)**:
-- **Total Tests**: 426 (401 passing, 15 failing, 10 skipped)
-- **Pass Rate**: 94%
+- **Total Tests**: 426 (417 passing, 0 failing, 9 skipped)
+- **Pass Rate**: 98%
 - **Test Suites**: 19
 - **Execution Time**: ~165 seconds (~3 minutes)
 
@@ -1640,7 +1639,8 @@ python run_brutal_tests.py
 | TEC Observation Model | 8s | ✅ 21/21 | IPP + ray tracing |
 | Validation Framework | 12s | ✅ 30/30 | Event replay + metrics |
 | Message Queue | 9s | ✅ 26/26 | Mock infrastructure |
-| Propagation Service | 6s | ⚠️ 14/23 | Ray tracing tests |
+| Propagation Service | 7s | ✅ 24/24 | Ray tracing + Chapman layer |
+| GloTEC Client | <1s | ✅ 10/10 | Async mock tests fixed |
 
 **Individual Test Files**:
 ```bash
