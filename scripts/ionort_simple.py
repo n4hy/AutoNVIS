@@ -9,9 +9,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QDoubleSpinBox, QProgressBar, QSplitter
+    QPushButton, QLabel, QDoubleSpinBox, QProgressBar, QSplitter,
+    QToolBar, QMessageBox, QSizePolicy,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QAction
 
 from src.raytracer import (
     IonosphericModel, HaselgroveSolver, HomingAlgorithm,
@@ -77,6 +79,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("IONORT Simple Demo")
         self.setMinimumSize(1400, 900)
         self.setStyleSheet("background-color: #1e1e1e; color: white;")
+
+        # Toolbar
+        self._setup_toolbar()
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -153,6 +158,82 @@ class MainWindow(QMainWindow):
         # Right: visualization
         self.viz = IONORTVisualizationPanel()
         layout.addWidget(self.viz)
+
+    def _setup_toolbar(self):
+        """Create toolbar with About button."""
+        toolbar = QToolBar("Main Toolbar")
+        toolbar.setMovable(False)
+        toolbar.setStyleSheet("""
+            QToolBar {
+                background-color: #2a2a2a;
+                border: none;
+                spacing: 5px;
+                padding: 5px;
+            }
+            QToolButton {
+                background-color: #3a3a3a;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 5px 10px;
+                color: #ddd;
+            }
+            QToolButton:hover {
+                background-color: #4a4a4a;
+            }
+        """)
+        self.addToolBar(toolbar)
+
+        # Spacer to push About to the right
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
+
+        # About action
+        about_action = QAction("About", self)
+        about_action.triggered.connect(self._show_about)
+        toolbar.addAction(about_action)
+
+    def _show_about(self):
+        """Show about dialog."""
+        QMessageBox.about(
+            self,
+            "About IONORT Simple Demo",
+            "<h3>AutoNVIS IONORT Simple Demo</h3>"
+            "<p><b>Author:</b> N4HY</p>"
+            "<hr>"
+            "<p><b>Description:</b><br>"
+            "Simplified HF ray tracing homing algorithm demonstration. "
+            "Traces a small set of rays to find paths connecting "
+            "transmitter to receiver via ionospheric refraction.</p>"
+            "<p><b>Display:</b></p>"
+            "<ul>"
+            "<li><b>Altitude vs Range:</b> Ray paths showing altitude (km) "
+            "vs horizontal distance (km). Color = frequency.</li>"
+            "<li><b>Geographic View:</b> 3D globe with ray paths.</li>"
+            "</ul>"
+            "<p><b>Parameters:</b></p>"
+            "<ul>"
+            "<li><b>Tx/Rx Lat/Lon:</b> Transmitter and receiver coordinates</li>"
+            "<li><b>foF2:</b> F2-layer critical frequency (MHz)</li>"
+            "<li><b>SNR Cutoff:</b> Minimum usable SNR (-20 FT8, 0 CW, 10+ voice)</li>"
+            "</ul>"
+            "<p><b>Results:</b></p>"
+            "<ul>"
+            "<li><b>Range:</b> Great circle distance (km)</li>"
+            "<li><b>Winners:</b> Number of successful ray paths found</li>"
+            "<li><b>MUF/LUF:</b> Maximum/Lowest Usable Frequency</li>"
+            "<li><b>Best SNR:</b> Highest signal-to-noise ratio found</li>"
+            "</ul>"
+            "<p><b>Physics:</b></p>"
+            "<ul>"
+            "<li>Haselgrove ray equations (3D)</li>"
+            "<li>Appleton-Hartree refractive index</li>"
+            "<li>Chapman layer electron density</li>"
+            "<li>Physics-based link budget with SNR calculation</li>"
+            "</ul>"
+            "<hr>"
+            "<p>Built with PyQt6 and pyqtgraph.</p>"
+        )
 
     def on_run(self):
         print("RUN CLICKED!")

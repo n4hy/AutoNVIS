@@ -258,34 +258,50 @@ class SolarImagingMainWindow(QMainWindow):
 
     def _show_about(self):
         """Show about dialog."""
-        about_text = """
-<h2>Solar Imaging Display</h2>
-<p>Version 1.0.0</p>
-
-<p>Real-time solar imagery from multiple space-based observatories:</p>
-
-<h3>Data Sources:</h3>
-<ul>
-<li><b>GOES SUVI</b> - NOAA's geostationary solar imager (6 EUV channels)</li>
-<li><b>SDO AIA</b> - NASA's high-resolution solar telescope (10 wavelengths)</li>
-<li><b>SDO HMI</b> - Magnetic field and white-light imaging</li>
-<li><b>SOHO LASCO</b> - Coronagraph for CME detection</li>
-<li><b>SOHO EIT</b> - EUV imaging from L1</li>
-</ul>
-
-<h3>Update Cadence:</h3>
-<ul>
-<li>SUVI, AIA, HMI: Every 60 seconds</li>
-<li>LASCO, EIT: Every 15 minutes</li>
-</ul>
-
-<p><b>Data provided by:</b><br>
-NOAA Space Weather Prediction Center<br>
-NASA/ESA via Helioviewer.org</p>
-
-<p>Part of the AutoNVIS Project</p>
-"""
-        QMessageBox.about(self, "About Solar Imaging", about_text)
+        QMessageBox.about(
+            self,
+            "About Solar Imaging Display",
+            "<h3>AutoNVIS Solar Imaging Display</h3>"
+            "<p><b>Author:</b> N4HY</p>"
+            "<hr>"
+            "<p><b>Description:</b><br>"
+            "Real-time solar imagery from multiple space-based observatories. "
+            "Solar activity directly affects HF propagation conditions.</p>"
+            "<p><b>Data Sources (24 images across 5 observatories):</b></p>"
+            "<ul>"
+            "<li><b>GOES SUVI:</b> NOAA's geostationary solar ultraviolet imager "
+            "(6 EUV channels: 94, 131, 171, 195, 284, 304 Angstrom)</li>"
+            "<li><b>SDO AIA:</b> NASA's Solar Dynamics Observatory Atmospheric "
+            "Imaging Assembly (10 wavelengths from 94-4500 Angstrom)</li>"
+            "<li><b>SDO HMI:</b> Helioseismic and Magnetic Imager - magnetograms, "
+            "continuum, and Dopplergrams for sunspot/active region analysis</li>"
+            "<li><b>SOHO LASCO:</b> Large Angle Spectrometric Coronagraph - CME "
+            "detection (C2, C3 coronagraph images)</li>"
+            "<li><b>SOHO EIT:</b> Extreme ultraviolet Imaging Telescope from L1</li>"
+            "</ul>"
+            "<p><b>Why This Matters for HF:</b></p>"
+            "<ul>"
+            "<li><b>Active regions/sunspots:</b> Source of solar flares that cause "
+            "radio blackouts (X-ray flux spike)</li>"
+            "<li><b>Coronal holes:</b> High-speed solar wind streams causing "
+            "geomagnetic storms (high Kp)</li>"
+            "<li><b>CMEs:</b> Coronal Mass Ejections can cause major geomagnetic "
+            "storms 1-3 days later</li>"
+            "<li><b>Quiet sun:</b> Low activity = stable HF propagation</li>"
+            "</ul>"
+            "<p><b>Update Cadence:</b></p>"
+            "<ul>"
+            "<li>SUVI, AIA, HMI: Every 60 seconds</li>"
+            "<li>LASCO, EIT: Every 15 minutes</li>"
+            "</ul>"
+            "<p><b>Data Providers:</b></p>"
+            "<ul>"
+            "<li>NOAA Space Weather Prediction Center</li>"
+            "<li>NASA/ESA via Helioviewer.org</li>"
+            "</ul>"
+            "<hr>"
+            "<p>Built with PyQt6.</p>"
+        )
 
     def set_client(self, client):
         """Connect to a data client."""

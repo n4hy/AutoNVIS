@@ -21,9 +21,10 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLabel, QPushButton, QGroupBox,
     QSpinBox, QDoubleSpinBox, QSplitter, QStatusBar, QProgressBar,
+    QToolBar, QMessageBox, QSizePolicy,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QAction
 
 import pyqtgraph as pg
 
@@ -45,10 +46,11 @@ class RayTraceWorker(QThread):
     all_complete = pyqtSignal(int, int)  # total, ground_hits
     progress = pyqtSignal(int, int)  # current, total
 
-    def __init__(self, solver, params_list):
+    def __init__(self, solver, params_list, max_hops=3):
         super().__init__()
         self.solver = solver
         self.params_list = params_list  # List of (freq, elev, azim, lat, lon, color)
+        self.max_hops = max_hops
 
     def run(self):
         ground_hits = 0
@@ -62,6 +64,7 @@ class RayTraceWorker(QThread):
                 mode=RayMode.ORDINARY,
                 step_km=3.0,  # Larger steps for speed
                 max_path_km=2000.0,  # Shorter max path
+                max_hops=self.max_hops,
             )
 
             if path.termination == RayTermination.GROUND_HIT:
@@ -277,6 +280,13 @@ class ControlPanel(QWidget):
         self.elev_spin.setValue(60)
         ray_layout.addWidget(self.elev_spin, 1, 1)
 
+        ray_layout.addWidget(QLabel("Max Hops:"), 2, 0)
+        self.max_hops_spin = QSpinBox()
+        self.max_hops_spin.setRange(1, 10)
+        self.max_hops_spin.setValue(3)
+        self.max_hops_spin.setToolTip("Maximum number of ground reflections")
+        ray_layout.addWidget(self.max_hops_spin, 2, 1)
+
         layout.addWidget(ray_group)
 
         # Buttons
@@ -343,6 +353,9 @@ class RayTracerDisplay(QMainWindow):
         self.update_display()
 
     def setup_ui(self):
+        # Toolbar
+        self._setup_toolbar()
+
         central = QWidget()
         self.setCentralWidget(central)
         layout = QHBoxLayout(central)
@@ -370,6 +383,86 @@ class RayTracerDisplay(QMainWindow):
         self.setStatusBar(self.status)
         self.status.showMessage("Ready")
 
+    def _setup_toolbar(self):
+        """Create toolbar with About button."""
+        toolbar = QToolBar("Main Toolbar")
+        toolbar.setMovable(False)
+        toolbar.setStyleSheet("""
+            QToolBar {
+                background-color: #1a1a2e;
+                border: none;
+                spacing: 5px;
+                padding: 5px;
+            }
+            QToolButton {
+                background-color: #2a2a3e;
+                border: 1px solid #444;
+                border-radius: 4px;
+                padding: 5px 10px;
+                color: #ddd;
+            }
+            QToolButton:hover {
+                background-color: #3a3a4e;
+            }
+        """)
+        self.addToolBar(toolbar)
+
+        # Spacer to push About to the right
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
+
+        # About action
+        about_action = QAction("About", self)
+        about_action.triggered.connect(self._show_about)
+        toolbar.addAction(about_action)
+
+    def _show_about(self):
+        """Show about dialog."""
+        QMessageBox.about(
+            self,
+            "About AutoNVIS Ray Tracer",
+            "<h3>AutoNVIS HF Ray Tracer</h3>"
+            "<p><b>Author:</b> N4HY</p>"
+            "<hr>"
+            "<p><b>Description:</b><br>"
+            "Native 3D magnetoionic ray tracing through the ionosphere "
+            "using the Haselgrove equations with Appleton-Hartree "
+            "refractive index formulation.</p>"
+            "<p><b>Display Features:</b></p>"
+            "<ul>"
+            "<li><b>Ray Paths Panel:</b> Shows ray trajectories as altitude vs ground range. "
+            "Green line = ground level, blue shaded region = ionosphere (F-layer).</li>"
+            "<li><b>Electron Density Profile:</b> Vertical Ne(h) profile with F2 peak marked. "
+            "Log scale on x-axis (electrons/cm³), linear altitude (km).</li>"
+            "<li><b>Color coding:</b> Multiple rays shown in different colors for fan traces.</li>"
+            "</ul>"
+            "<p><b>Physics:</b></p>"
+            "<ul>"
+            "<li>Chapman layer electron density model</li>"
+            "<li>Appleton-Hartree equation for complex refractive index</li>"
+            "<li>Haselgrove ray equations (3D Cartesian)</li>"
+            "<li>Ordinary (O) and Extraordinary (X) mode propagation</li>"
+            "<li>Ground reflection for multi-hop paths</li>"
+            "</ul>"
+            "<p><b>Presets:</b></p>"
+            "<ul>"
+            "<li><b>NVIS:</b> Near Vertical Incidence Skywave (5 MHz, 80° elevation)</li>"
+            "<li><b>Skip Zone:</b> Fan of rays showing skip zone formation</li>"
+            "<li><b>Reflect vs Escape:</b> Compare below/above foF2 behavior</li>"
+            "</ul>"
+            "<p><b>Controls:</b></p>"
+            "<ul>"
+            "<li>foF2: F2-layer critical frequency (MHz)</li>"
+            "<li>hmF2: F2-layer peak height (km)</li>"
+            "<li>Freq: Transmit frequency (MHz)</li>"
+            "<li>Elevation: Take-off angle (degrees)</li>"
+            "<li>Max Hops: Maximum ground reflections</li>"
+            "</ul>"
+            "<hr>"
+            "<p>Built with PyQt6 and pyqtgraph.</p>"
+        )
+
     def connect_signals(self):
         self.controls.fof2_spin.valueChanged.connect(self.on_iono_changed)
         self.controls.hmf2_spin.valueChanged.connect(self.on_iono_changed)
@@ -394,6 +487,7 @@ class RayTracerDisplay(QMainWindow):
     def trace_single(self):
         freq = self.controls.freq_spin.value()
         elev = self.controls.elev_spin.value()
+        max_hops = self.controls.max_hops_spin.value()
 
         self.status.showMessage("Tracing...")
         QApplication.processEvents()
@@ -405,6 +499,7 @@ class RayTracerDisplay(QMainWindow):
             mode=RayMode.ORDINARY,
             step_km=2.0,
             max_path_km=2000.0,
+            max_hops=max_hops,
         )
 
         self.ray_widget.add_ray(path, '#ffff00')
@@ -412,6 +507,7 @@ class RayTracerDisplay(QMainWindow):
 
     def trace_fan(self):
         freq = self.controls.freq_spin.value()
+        max_hops = self.controls.max_hops_spin.value()
 
         # Prepare ray parameters - just 5 rays for speed
         params = []
@@ -427,7 +523,7 @@ class RayTracerDisplay(QMainWindow):
         self.controls.fan_btn.setEnabled(False)
         self.controls.trace_btn.setEnabled(False)
 
-        self.worker = RayTraceWorker(self.solver, params)
+        self.worker = RayTraceWorker(self.solver, params, max_hops=max_hops)
         self.worker.ray_complete.connect(self.on_ray_complete)
         self.worker.progress.connect(self.on_progress)
         self.worker.all_complete.connect(self.on_fan_complete)

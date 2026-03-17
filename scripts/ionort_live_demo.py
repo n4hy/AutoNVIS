@@ -49,10 +49,11 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QLineEdit, QGroupBox, QProgressBar,
     QStatusBar, QMessageBox, QComboBox, QSpinBox, QDoubleSpinBox,
-    QCheckBox, QSplitter, QFrame, QScrollArea, QTextEdit
+    QCheckBox, QSplitter, QFrame, QScrollArea, QTextEdit,
+    QToolBar, QSizePolicy,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QAction
 
 from src.raytracer import (
     IonosphericModel,
@@ -908,6 +909,9 @@ class IONORTLiveWindow(QMainWindow):
             }
         """)
 
+        # Toolbar
+        self._setup_toolbar()
+
         # Central widget
         central = QWidget()
         self.setCentralWidget(central)
@@ -978,6 +982,94 @@ class IONORTLiveWindow(QMainWindow):
         if self.use_live:
             self.control_panel.live_enabled.setChecked(True)
             self.control_panel.simulated_mode.setChecked(self.use_simulated)
+
+    def _setup_toolbar(self):
+        """Create toolbar with About button."""
+        toolbar = QToolBar("Main Toolbar")
+        toolbar.setMovable(False)
+        toolbar.setStyleSheet("""
+            QToolBar {
+                background-color: #2a2a2a;
+                border: none;
+                spacing: 5px;
+                padding: 5px;
+            }
+            QToolButton {
+                background-color: #3a3a3a;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 5px 10px;
+                color: #ddd;
+            }
+            QToolButton:hover {
+                background-color: #4a4a4a;
+            }
+        """)
+        self.addToolBar(toolbar)
+
+        # Spacer to push About to the right
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
+
+        # About action
+        about_action = QAction("About", self)
+        about_action.triggered.connect(self._show_about)
+        toolbar.addAction(about_action)
+
+    def _show_about(self):
+        """Show about dialog."""
+        QMessageBox.about(
+            self,
+            "About IONORT Live Dashboard",
+            "<h3>AutoNVIS IONORT Live Ray Tracing Dashboard</h3>"
+            "<p><b>Author:</b> N4HY</p>"
+            "<hr>"
+            "<p><b>Description:</b><br>"
+            "HF ray tracing homing algorithm with real-time ionospheric data. "
+            "Finds all frequency/elevation/azimuth combinations that connect "
+            "a transmitter to a receiver via ionospheric refraction.</p>"
+            "<p><b>Display Panels:</b></p>"
+            "<ul>"
+            "<li><b>Altitude vs Ground Range:</b> Ray paths showing altitude (km) "
+            "vs horizontal distance (km). Color indicates frequency (blue=low, red=high). "
+            "Use frequency filter buttons to show/hide bands.</li>"
+            "<li><b>Geographic View:</b> 3D globe showing ray paths in geographic "
+            "coordinates with transmitter (red) and receiver (green) markers.</li>"
+            "<li><b>Diagnostic Console:</b> Copy-able log of computation details, "
+            "SNR calculations, and path statistics.</li>"
+            "</ul>"
+            "<p><b>Live Data Features:</b></p>"
+            "<ul>"
+            "<li><b>GIRO Network:</b> Real-time foF2/hmF2 from nearest ionosonde</li>"
+            "<li><b>NOAA SWPC:</b> Space weather (Kp, X-ray flux) affecting D-layer absorption</li>"
+            "<li><b>Auto-apply:</b> Automatically updates ionosphere model</li>"
+            "</ul>"
+            "<p><b>Key Results:</b></p>"
+            "<ul>"
+            "<li><b>MUF:</b> Maximum Usable Frequency for this path</li>"
+            "<li><b>LUF:</b> Lowest Usable Frequency (D-layer absorption limited)</li>"
+            "<li><b>FOT:</b> Frequency of Optimum Traffic (90% MUF)</li>"
+            "<li><b>SNR:</b> Signal-to-Noise Ratio from physics-based link budget</li>"
+            "</ul>"
+            "<p><b>Physics:</b></p>"
+            "<ul>"
+            "<li>Haselgrove ray equations in 3D Cartesian coordinates</li>"
+            "<li>Appleton-Hartree magnetoionic refractive index</li>"
+            "<li>Chapman layer electron density model</li>"
+            "<li>ITU-R P.533 D-layer absorption model</li>"
+            "<li>ITU-R P.372 atmospheric noise model</li>"
+            "<li>Multi-hop propagation with ground reflection loss</li>"
+            "</ul>"
+            "<p><b>Integrators:</b></p>"
+            "<ul>"
+            "<li><b>abm:</b> Adams-Bashforth-Moulton (fastest, 2 evals/step)</li>"
+            "<li><b>rk45:</b> Runge-Kutta-Fehlberg 4(5) (most accurate, adaptive)</li>"
+            "<li><b>rk4:</b> Classic RK4 with error tracking</li>"
+            "</ul>"
+            "<hr>"
+            "<p>Built with PyQt6 and pyqtgraph.</p>"
+        )
 
     def _init_live_client(self):
         """Initialize live data client."""
