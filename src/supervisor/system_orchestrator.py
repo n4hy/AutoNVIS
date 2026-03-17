@@ -366,7 +366,7 @@ class SystemOrchestrator:
             extra={'cycle_id': cycle_id}
         )
 
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
         success = True
 
         try:
@@ -403,7 +403,7 @@ class SystemOrchestrator:
 
         finally:
             # Calculate duration
-            end_time = asyncio.get_event_loop().time()
+            end_time = asyncio.get_running_loop().time()
             duration = end_time - start_time
 
             self.last_cycle_end = datetime.utcnow()

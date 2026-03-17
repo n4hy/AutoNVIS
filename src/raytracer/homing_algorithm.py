@@ -441,8 +441,8 @@ class HomingAlgorithm:
                     proc.join(timeout=0.5)
                     if proc.is_alive():
                         proc.kill()
-            except Exception:
-                pass
+            except (ProcessLookupError, OSError) as e:
+                logger.debug(f"Process cleanup error (already terminated): {e}")
         self._active_processes.clear()
 
     def is_cancelled(self) -> bool:
@@ -820,8 +820,8 @@ class HomingAlgorithm:
                 # Always clean up executor properly to avoid semaphore leaks
                 try:
                     self._executor.shutdown(wait=True, cancel_futures=True)
-                except Exception:
-                    pass
+                except (RuntimeError, BrokenPipeError, OSError) as e:
+                    logger.warning(f"Executor shutdown warning: {e}")
                 self._executor = None
 
         except Exception as e:
@@ -1165,7 +1165,8 @@ class HomingAlgorithm:
         mid_lon = (result.tx_position[1] + result.rx_position[1]) / 2
         try:
             solar_zenith = calculate_solar_zenith_angle(mid_lat, mid_lon)
-        except Exception:
+        except (ValueError, TypeError, ZeroDivisionError) as e:
+            logger.warning(f"Solar zenith calculation failed, using default 45.0: {e}")
             solar_zenith = 45.0  # Default
 
         # Calculate SNR for each winner and filter unusable paths

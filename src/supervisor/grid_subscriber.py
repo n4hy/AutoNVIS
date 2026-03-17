@@ -98,7 +98,8 @@ class GridSubscriber:
             # Validate message
             if not self._validate_grid_message(data):
                 self.logger.error(f"Invalid grid message: {cycle_id}")
-                self.grids_invalid += 1
+                with self.grid_lock:
+                    self.grids_invalid += 1
                 return
 
             # Reconstruct grid from flattened data
@@ -111,7 +112,8 @@ class GridSubscriber:
                     message.timestamp.rstrip('Z')
                 )
 
-            self.grids_received += 1
+            with self.grid_lock:
+                self.grids_received += 1
 
             self.logger.info(
                 f"Grid stored: {cycle_id}, "
@@ -124,7 +126,8 @@ class GridSubscriber:
                 f"Error processing grid message: {e}",
                 exc_info=True
             )
-            self.grids_invalid += 1
+            with self.grid_lock:
+                self.grids_invalid += 1
 
     def _validate_grid_message(self, data: dict) -> bool:
         """
@@ -265,10 +268,11 @@ class GridSubscriber:
         Returns:
             Tuple of (ne_grid, lat, lon, alt, xray_flux) if available, else None
         """
-        start_time = asyncio.get_event_loop().time()
+        loop = asyncio.get_running_loop()
+        start_time = loop.time()
         end_time = start_time + timeout
 
-        while asyncio.get_event_loop().time() < end_time:
+        while loop.time() < end_time:
             with self.grid_lock:
                 if self.latest_grid is not None and self.latest_grid_time is not None:
                     # Check grid age
@@ -371,12 +375,13 @@ class GridSubscriber:
         Returns:
             Dictionary with statistics
         """
-        return {
-            'grids_received': self.grids_received,
-            'grids_invalid': self.grids_invalid,
-            'has_grid': self.latest_grid is not None,
-            'grid_age_seconds': (
-                int((datetime.utcnow() - self.latest_grid_time).total_seconds())
-                if self.latest_grid_time else -1
-            )
-        }
+        with self.grid_lock:
+            return {
+                'grids_received': self.grids_received,
+                'grids_invalid': self.grids_invalid,
+                'has_grid': self.latest_grid is not None,
+                'grid_age_seconds': (
+                    int((datetime.utcnow() - self.latest_grid_time).total_seconds())
+                    if self.latest_grid_time else -1
+                )
+            }

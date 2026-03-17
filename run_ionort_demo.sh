@@ -59,8 +59,11 @@ case "$MODE" in
         echo "  --step-km N       Integration step km (default: 1.0, try 2-5 for speed)"
         echo "  --freq-step N     Frequency step MHz (default: 1.0)"
         echo "  --elev-step N     Elevation step degrees (default: 10.0)"
+        echo "  --elev-min N      Minimum take-off angle degrees (default: 10)"
+        echo "  --elev-max N      Maximum take-off angle degrees (default: 80)"
         echo "  --max-hops N      Maximum ground reflections for multi-hop (default: 3)"
         echo "  --tolerance N     Landing tolerance km (default: 100, try 200-500 for long paths)"
+        echo "  --snr-cutoff N    Minimum SNR threshold dB (default: 0, -20 for FT8, 10 for voice)"
         echo ""
         echo "Examples:"
         echo "  ./run_ionort_demo.sh simple"
@@ -71,6 +74,9 @@ case "$MODE" in
         echo ""
         echo "Fast run (larger steps, fewer rays):"
         echo "  ./run_ionort_demo.sh live --step-km 3 --freq-step 2 --elev-step 15"
+        echo ""
+        echo "Long path with FT8 SNR threshold:"
+        echo "  ./run_ionort_demo.sh live --tx 40.71,-74.01 --rx 51.51,-0.13 --tolerance 300 --max-hops 6 --snr-cutoff -20"
         ;;
     *)
         echo "Unknown mode: $MODE"

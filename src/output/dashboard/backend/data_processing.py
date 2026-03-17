@@ -11,6 +11,9 @@ electron density grids:
 
 import numpy as np
 from typing import Tuple, Optional, Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def compute_fof2(ne_grid: np.ndarray, alt_grid: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -318,5 +321,6 @@ def compute_chapman_layer_fit(
             'r_squared': float(r_squared)
         }
 
-    except Exception:
+    except (ValueError, RuntimeError, np.linalg.LinAlgError) as e:
+        logger.debug(f"Chapman layer fit failed: {e}")
         return None

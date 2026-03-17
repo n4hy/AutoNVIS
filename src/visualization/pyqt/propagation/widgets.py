@@ -142,8 +142,8 @@ class XRayWidget(QWidget):
             if len(self.times) > 1:
                 self.plot_widget.setXRange(self.times[0], self.times[-1], padding=0.02)
 
-        except Exception:
-            pass
+        except (KeyError, ValueError, TypeError, RuntimeError):
+            pass  # Invalid or missing data
 
     def set_time_range(self, hours: int):
         """Set the time range to display."""
@@ -262,8 +262,8 @@ class KpWidget(QWidget):
             if len(self.times) > 1:
                 self.plot_widget.setXRange(self.times[0], self.times[-1], padding=0.02)
 
-        except Exception:
-            pass
+        except (KeyError, ValueError, TypeError, RuntimeError):
+            pass  # Invalid or missing data
 
     def set_time_range(self, hours: int):
         """Set the time range to display."""
@@ -372,8 +372,8 @@ class ProtonWidget(QWidget):
             if len(self.times) > 1:
                 self.plot_widget.setXRange(self.times[0], self.times[-1], padding=0.02)
 
-        except Exception:
-            pass
+        except (KeyError, ValueError, TypeError, RuntimeError):
+            pass  # Invalid or missing data
 
     def set_time_range(self, hours: int):
         """Set the time range to display."""
@@ -512,8 +512,8 @@ class SolarWindWidget(QWidget):
             if len(self.times) > 1:
                 self.plot_widget.setXRange(self.times[0], self.times[-1], padding=0.02)
 
-        except Exception:
-            pass
+        except (KeyError, ValueError, TypeError, RuntimeError):
+            pass  # Invalid or missing data
 
     def set_time_range(self, hours: int):
         """Set the time range to display."""

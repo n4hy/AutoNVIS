@@ -127,8 +127,8 @@ class FrequencyIndicator(QWidget):
                     font-size: 16px; font-weight: bold; padding: 10px;
                     background-color: #224422; border-radius: 5px; color: #44ff44;
                 """)
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError, ValueError, TypeError):
+            pass  # Widget not ready or invalid data
 
 
 class RayPathWidget(QWidget):
@@ -394,8 +394,8 @@ class CoverageMapWidget(QWidget):
 
                 self.plot_widget.setXRange(lon_min - lon_pad, lon_max + lon_pad, padding=0)
                 self.plot_widget.setYRange(lat_min - lat_pad, lat_max + lat_pad, padding=0)
-        except Exception:
-            pass  # Skip on error
+        except (ValueError, TypeError, RuntimeError):
+            pass  # Skip on invalid range data
 
 
 class ControlPanel(QWidget):
@@ -458,6 +458,33 @@ class ControlPanel(QWidget):
 
         layout.addWidget(freq_group)
 
+        # Elevation range (take-off angle)
+        elev_group = QGroupBox("Take-Off Angle")
+        elev_layout = QGridLayout(elev_group)
+
+        elev_layout.addWidget(QLabel("Min:"), 0, 0)
+        self.elev_min = QDoubleSpinBox()
+        self.elev_min.setRange(0, 89)
+        self.elev_min.setValue(10.0)
+        self.elev_min.setSuffix("°")
+        elev_layout.addWidget(self.elev_min, 0, 1)
+
+        elev_layout.addWidget(QLabel("Max:"), 1, 0)
+        self.elev_max = QDoubleSpinBox()
+        self.elev_max.setRange(1, 90)
+        self.elev_max.setValue(80.0)
+        self.elev_max.setSuffix("°")
+        elev_layout.addWidget(self.elev_max, 1, 1)
+
+        elev_layout.addWidget(QLabel("Step:"), 2, 0)
+        self.elev_step = QDoubleSpinBox()
+        self.elev_step.setRange(1, 20)
+        self.elev_step.setValue(10.0)
+        self.elev_step.setSuffix("°")
+        elev_layout.addWidget(self.elev_step, 2, 1)
+
+        layout.addWidget(elev_group)
+
         # Ionosphere model
         iono_group = QGroupBox("Ionosphere Model")
         iono_layout = QGridLayout(iono_group)
@@ -478,6 +505,19 @@ class ControlPanel(QWidget):
         iono_layout.addWidget(self.hmf2, 1, 1)
 
         layout.addWidget(iono_group)
+
+        # Ray tracing options
+        ray_group = QGroupBox("Ray Tracing Options")
+        ray_layout = QGridLayout(ray_group)
+
+        ray_layout.addWidget(QLabel("Max Hops:"), 0, 0)
+        self.max_hops = QSpinBox()
+        self.max_hops.setRange(1, 10)
+        self.max_hops.setValue(3)
+        self.max_hops.setToolTip("Maximum number of ground reflections (1-10)")
+        ray_layout.addWidget(self.max_hops, 0, 1)
+
+        layout.addWidget(ray_group)
 
         # Trace button
         self.trace_btn = QPushButton("Calculate Coverage")
@@ -514,8 +554,12 @@ class ControlPanel(QWidget):
             'freq_min': self.freq_min.value(),
             'freq_max': self.freq_max.value(),
             'freq_step': self.freq_step.value(),
+            'elev_min': self.elev_min.value(),
+            'elev_max': self.elev_max.value(),
+            'elev_step': self.elev_step.value(),
             'nmf2': self.nmf2.value(),
             'hmf2': self.hmf2.value(),
+            'max_hops': self.max_hops.value(),
         }
         self.trace_requested.emit(params)
 
