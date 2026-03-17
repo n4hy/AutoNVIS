@@ -2,7 +2,7 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
-**Version:** 0.4.2 | **Status:** ✅ Production Ready (Filter Core + RTS Smoother + HDF5 Persistence + GIRO Ionosonde + Ray-Traced TEC + Historical Validation + IONORT Ray Tracing + Web Dashboard + Vogler-Hoffmeyer Channel Model) | **Last Updated:** March 16, 2026
+**Version:** 0.4.3 | **Status:** ✅ Production Ready (Filter Core + RTS Smoother + HDF5 Persistence + GIRO Ionosonde + Ray-Traced TEC + Historical Validation + IONORT Ray Tracing + Web Dashboard + Vogler-Hoffmeyer Channel Model + Solar Imaging) | **Last Updated:** March 16, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-98%25%20passing-brightgreen)]()
@@ -30,6 +30,7 @@
   - [PyQt TEC Display](#6-pyqt-tec-display-application)
   - [PyQt HF Propagation Display](#7-pyqt-hf-propagation-display-application)
 - [PyQt Ray Tracer Display](#8-pyqt-ray-tracer-display-application)
+- [PyQt Solar Imaging Display](#8a-pyqt-solar-imaging-display-application)
 - [Web Dashboard Ray Tracer](#9-web-dashboard-ray-tracer)
 - [IONORT-Style Features](#10-ionort-style-features)
   - [Python-C++ Integration Layer](#11-python-c-integration-layer)
@@ -64,6 +65,14 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 - Automatic space weather event response
 
 **Result**: Continuous, accurate NVIS frequency planning during Solar Cycle 25 volatility.
+
+**New in v0.4.3**: Dashboard improvements and Solar Imaging:
+- **Comprehensive About Dialogs**: All dashboards now include detailed About buttons explaining display features, physics, data sources, and controls
+- **Solar Imaging Dashboard**: Real-time solar imagery from 5 observatories (GOES SUVI, SDO AIA/HMI, SOHO LASCO/EIT) - 24 wavelength channels
+- **Improved Exception Handling**: Replaced bare `except Exception` with specific exception types throughout
+- **Thread Safety Fixes**: Grid subscriber counter operations now properly locked
+- **Async API Updates**: Replaced deprecated `asyncio.get_event_loop()` with `get_running_loop()`
+- **UI Enhancements**: Added elevation range controls and max hops to ray tracer widgets
 
 **New in v0.4.2**: Bug fixes and test infrastructure improvements:
 - **Fixed missing imports** in integration tests (PropagationService, Topics, MockMessageQueueClient)
@@ -115,6 +124,8 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 ✅ **Historical Validation** - Event replayer with comprehensive metrics framework
 ✅ **Professional Visualizations** - Altitude/Range, 3D Geographic, Synthetic Ionogram
 ✅ **Web Ray Tracer Dashboard** - Real-time browser-based PHaRLAP visualization with REST API
+✅ **Solar Imaging Dashboard** - Real-time imagery from 5 observatories (24 wavelength channels)
+✅ **Comprehensive About Dialogs** - All dashboards include detailed help with physics explanations
 ✅ **Vogler-Hoffmeyer Channel Model** - NTIA 90-255 wideband HF fading simulation
 ✅ **Hybrid Channel Modeling** - Ray tracing + statistical fading for communications simulation
 ✅ **Rigorously Tested** - 426 brutal tests, 94% passing (401/426)
@@ -145,7 +156,7 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 - **5 channel presets** (NTIA 90-255 conditions)
 - **3 integrators** (RK4, Adams-Bashforth, RK45 Dormand-Prince)
 - **27 ionosonde stations** (global GIRO network)
-- **4 visualizations** (Altitude/Range, 3D Geographic, Ionogram, Web Dashboard)
+- **5 visualizations** (Altitude/Range, 3D Geographic, Ionogram, Web Dashboard, Solar Imaging)
 - **10 REST endpoints** for raytracer web API
 - **4 months** development time (Phases 1-16)
 
@@ -614,6 +625,7 @@ No RabbitMQ. No dashboard servers. No WebSocket. Just data.
 - **Scale Modes**: Percentile (5th-95th), Auto, or Fixed color scaling
 - **Point Tracking**: Click map to track TEC at specific location
 - **Dark Theme**: Professional appearance for operational use
+- **About Dialog**: Comprehensive help explaining TEC interpretation for HF propagation
 
 **Color Scale Modes**:
 - **Percentile** (default): Uses 5th-95th percentile range for optimal contrast
@@ -689,6 +701,7 @@ No RabbitMQ. No dashboard servers. No WebSocket. Just data.
 - **NOAA Scale Indicators**: Color-coded R/G/S scale badges
 - **Real-Time Updates**: Automatic 60-second refresh
 - **Dark Theme**: Professional appearance for operational use
+- **About Dialog**: Detailed help explaining NOAA scales, status colors, and data sources
 
 **Data Sources**:
 | Indicator | NOAA Endpoint | Update Rate |
@@ -761,6 +774,7 @@ python src/raytracer/display.py
 - **Interactive Presets**: NVIS (85°), Skip Zone Demo (45°), Reflect vs Escape
 - **Threaded Computation**: Background ray tracing with progress indicators
 - **Dark Theme**: Professional appearance for operational use
+- **About Dialog**: Comprehensive physics explanation (Haselgrove, Appleton-Hartree, Chapman layers)
 
 **Ray Tracer Package** (`src/raytracer/`):
 | Module | Purpose |
@@ -804,7 +818,7 @@ if result.success:
 - `src/raytracer/iri_correction.py` - Real-time correction (18,699 bytes)
 
 **Running All Displays**:
-All three displays can run simultaneously:
+All four displays can run simultaneously:
 ```bash
 # Terminal 1: TEC Display
 ./run_AutoNVIS_tec_display.sh
@@ -814,8 +828,59 @@ All three displays can run simultaneously:
 
 # Terminal 3: Ray Tracer Display
 ./run_AutoNVIS_raytracer.sh
+
+# Terminal 4: Solar Imaging Display
+./run_solar_imaging.sh
 ```
-No port conflicts - each operates independently.
+No port conflicts - each operates independently. All displays include About buttons with comprehensive help.
+
+**Status**: ✅ Complete and operational
+
+### 8a. PyQt Solar Imaging Display Application
+
+Real-time solar imagery dashboard showing images from multiple space-based observatories. Solar activity directly affects HF propagation conditions.
+
+**What It Shows** (Tabbed Interface - 5 Observatories, 24 Channels):
+- **GOES SUVI**: NOAA's geostationary Solar Ultraviolet Imager (6 EUV channels: 94, 131, 171, 195, 284, 304 Å)
+- **SDO AIA**: NASA's Atmospheric Imaging Assembly (10 wavelengths: 94-4500 Å)
+- **SDO HMI**: Helioseismic and Magnetic Imager (magnetograms, continuum, Dopplergrams)
+- **SOHO LASCO**: Large Angle Spectrometric Coronagraph (C2, C3 for CME detection)
+- **SOHO EIT**: Extreme ultraviolet Imaging Telescope from L1
+
+**Why This Matters for HF**:
+- **Active regions/sunspots**: Source of solar flares causing radio blackouts (X-ray flux spike)
+- **Coronal holes**: High-speed solar wind streams causing geomagnetic storms (high Kp)
+- **CMEs**: Coronal Mass Ejections can cause major geomagnetic storms 1-3 days later
+- **Quiet sun**: Low activity = stable HF propagation
+
+**Quick Start**:
+```bash
+./run_solar_imaging.sh
+```
+
+**Key Features**:
+- **Multi-Source Display**: 24 images across 5 observatories in tabbed grid layout
+- **Real-Time Updates**: SUVI/AIA/HMI every 60 seconds, LASCO/EIT every 15 minutes
+- **One-Click Download**: Save any image with automatic filename generation
+- **Status Indicators**: Connection state, last update time, fetch progress
+- **Dark Theme**: Professional appearance for operational use
+- **About Dialog**: Comprehensive help explaining each data source and HF implications
+
+**Data Sources**:
+| Observatory | Update Rate | Channels |
+|-------------|-------------|----------|
+| GOES SUVI | 60 seconds | 6 EUV |
+| SDO AIA | 60 seconds | 10 wavelengths |
+| SDO HMI | 60 seconds | 3 products |
+| SOHO LASCO | 15 minutes | 2 coronagraphs |
+| SOHO EIT | 15 minutes | 3 EUV |
+
+**Components**:
+- `src/visualization/pyqt/solarimaging/main_window.py` - Tabbed main window
+- `src/visualization/pyqt/solarimaging/widgets.py` - Image panel widgets
+- `src/visualization/pyqt/solarimaging/sources.py` - Observatory/wavelength definitions
+- `src/visualization/pyqt/solarimaging/data_client.py` - Multi-source image fetcher
+- `run_solar_imaging.sh` - One-command launcher script
 
 **Status**: ✅ Complete and operational
 
