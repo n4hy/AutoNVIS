@@ -101,7 +101,7 @@ def compute_tec(ne_grid: np.ndarray, alt_grid: np.ndarray) -> np.ndarray:
 
             # Integrate using trapezoidal rule
             # Result in el/m²
-            tec_el_m2 = np.trapz(ne_profile, alt_m)
+            tec_el_m2 = np.trapezoid(ne_profile, alt_m)
 
             # Convert to TECU (1 TECU = 10^16 el/m²)
             tec_map[i, j] = tec_el_m2 / 1e16

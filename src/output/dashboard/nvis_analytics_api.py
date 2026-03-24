@@ -145,9 +145,6 @@ class NVISAnalyticsAPI:
         GET /nvis/sounders
         List all sounders with current metrics
         """
-        if not self.latest_analysis:
-            return []
-
         sounders_data = []
         for sounder_id, sounder in self.sounder_registry.items():
             # Get contribution from latest analysis
