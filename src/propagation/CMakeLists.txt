@@ -42,10 +42,11 @@ target_link_libraries(raytracer PRIVATE Eigen3::Eigen)
 
 # Compiler optimizations
 target_compile_options(raytracer PRIVATE
-    -O3
-    -march=native
-    -ffast-math
-    -DNDEBUG
+    -O0
+    -g
+    # -march=native
+    # -ffast-math
+    # -DNDEBUG
 )
 
 # Install to Python package directory
