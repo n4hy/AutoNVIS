@@ -2,11 +2,11 @@
 
 **Architecture for Autonomous Near Vertical Incidence Skywave (NVIS) Propagation Prediction (2025-2026)**
 
-**Version:** 0.4.3 | **Status:** ✅ Production Ready (Filter Core + RTS Smoother + HDF5 Persistence + GIRO Ionosonde + Ray-Traced TEC + Historical Validation + IONORT Ray Tracing + Web Dashboard + Vogler-Hoffmeyer Channel Model + Solar Imaging) | **Last Updated:** March 16, 2026
+**Version:** 0.4.4 | **Status:** ✅ Production Ready (Filter Core + RTS Smoother + HDF5 Persistence + GIRO Ionosonde + Ray-Traced TEC + Historical Validation + IONORT Ray Tracing + Web Dashboard + Vogler-Hoffmeyer Channel Model + Solar Imaging) | **Last Updated:** March 24, 2026
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-98%25%20passing-brightgreen)]()
-[![Test Suite](https://img.shields.io/badge/tests-417%2F426%20passing-brightgreen)]()
+[![Test Suite](https://img.shields.io/badge/tests-455%2F464%20passing-brightgreen)]()
 [![C++](https://img.shields.io/badge/C++-17-blue)]()
 [![Python](https://img.shields.io/badge/Python-3.11+-blue)]()
 [![License](https://img.shields.io/badge/license-TBD-lightgrey)]()
@@ -65,6 +65,12 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 - Automatic space weather event response
 
 **Result**: Continuous, accurate NVIS frequency planning during Solar Cycle 25 volatility.
+
+**New in v0.4.4**: NumPy 2.x compatibility and bug fixes:
+- **NumPy 2.x Support**: Updated deprecated `np.trapz` to `np.trapezoid` for NumPy 2.4+ compatibility
+- **pybind11 Upgrade**: Rebuilt C++ raytracer with pybind11 3.0.2 for NumPy 2.x ABI compatibility
+- **Dashboard API Fix**: Fixed sounders endpoint to list sounders without requiring prior analysis
+- **Test pass rate**: 455/464 tests passing (98%)
 
 **New in v0.4.3**: Dashboard improvements and Solar Imaging:
 - **Comprehensive About Dialogs**: All dashboards now include detailed About buttons explaining display features, physics, data sources, and controls
