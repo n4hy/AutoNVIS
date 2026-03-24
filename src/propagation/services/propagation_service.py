@@ -8,16 +8,27 @@ Also integrates the Vogler-Hoffmeyer HF channel model for realistic
 communications simulation with time-varying fading effects.
 
 Interfaces:
-    - Input: Electron density grid from SR-UKF filter
+    - Input: Electron density grid from SR-UKF filter (via RabbitMQ)
     - Output: LUF/MUF products published to RabbitMQ
     - Configuration: Grid coordinates, transmitter location, frequencies
 """
 
 import sys
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime, timezone
 import numpy as np
+
+# Import message queue for RabbitMQ integration
+try:
+    from ...common.message_queue import MessageQueueClient, Topics, Message
+    MQ_AVAILABLE = True
+except ImportError:
+    try:
+        from src.common.message_queue import MessageQueueClient, Topics, Message
+        MQ_AVAILABLE = True
+    except ImportError:
+        MQ_AVAILABLE = False
 
 # Add propagation module to path
 sys.path.insert(0, '/home/n4hy/AutoNVIS/src/propagation/python')
@@ -580,3 +591,219 @@ class PropagationService:
         if self._channel_model is not None:
             self._channel_model.reset()
             self.logger.debug("Channel model reset")
+
+    # =========================================================================
+    # RabbitMQ Message Queue Integration
+    # =========================================================================
+
+    def connect_message_queue(
+        self,
+        host: str = "localhost",
+        port: int = 5672,
+        username: str = "guest",
+        password: str = "guest"
+    ) -> bool:
+        """
+        Connect to RabbitMQ message queue for publishing products.
+
+        Args:
+            host: RabbitMQ host
+            port: RabbitMQ port
+            username: RabbitMQ username
+            password: RabbitMQ password
+
+        Returns:
+            True if connection successful, False otherwise
+        """
+        if not MQ_AVAILABLE:
+            self.logger.warning("Message queue module not available")
+            return False
+
+        try:
+            self._mq_client = MessageQueueClient(
+                host=host,
+                port=port,
+                username=username,
+                password=password
+            )
+            self.logger.info(f"Connected to RabbitMQ at {host}:{port}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to connect to RabbitMQ: {e}")
+            self._mq_client = None
+            return False
+
+    def publish_luf_muf(self, results: Dict[str, Any]) -> bool:
+        """
+        Publish LUF/MUF calculation results to message queue.
+
+        Args:
+            results: Results from calculate_luf_muf()
+
+        Returns:
+            True if published successfully
+        """
+        if not hasattr(self, '_mq_client') or self._mq_client is None:
+            self.logger.debug("Message queue not connected, skipping publish")
+            return False
+
+        try:
+            self._mq_client.publish(
+                topic=Topics.OUT_LUF_MUF,
+                data=results,
+                source="propagation_service"
+            )
+            self.logger.info(
+                f"Published LUF/MUF: LUF={results['luf_mhz']:.2f}, "
+                f"MUF={results['muf_mhz']:.2f} MHz"
+            )
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to publish LUF/MUF: {e}")
+            return False
+
+    def publish_coverage(self, coverage: Dict[str, Any]) -> bool:
+        """
+        Publish NVIS coverage results to message queue.
+
+        Args:
+            coverage: Results from calculate_nvis_coverage()
+
+        Returns:
+            True if published successfully
+        """
+        if not hasattr(self, '_mq_client') or self._mq_client is None:
+            return False
+
+        try:
+            # Simplify ray paths for transmission (remove large arrays)
+            simplified_coverage = {
+                'frequency_mhz': coverage['frequency_mhz'],
+                'coverage_summary': coverage['coverage_summary'],
+                'transmitter': coverage['transmitter'],
+                'timestamp_utc': coverage['timestamp_utc']
+            }
+
+            self._mq_client.publish(
+                topic=Topics.OUT_COVERAGE_MAP,
+                data=simplified_coverage,
+                source="propagation_service"
+            )
+            self.logger.info(
+                f"Published coverage for {coverage['frequency_mhz']:.2f} MHz"
+            )
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to publish coverage: {e}")
+            return False
+
+    def publish_frequency_plan(self, recommendations: List[float]) -> bool:
+        """
+        Publish frequency plan/recommendations to message queue.
+
+        Args:
+            recommendations: List of recommended frequencies (MHz)
+
+        Returns:
+            True if published successfully
+        """
+        if not hasattr(self, '_mq_client') or self._mq_client is None:
+            return False
+
+        try:
+            self._mq_client.publish(
+                topic=Topics.OUT_FREQUENCY_PLAN,
+                data={
+                    'frequencies_mhz': recommendations,
+                    'transmitter': {
+                        'latitude': self.tx_lat,
+                        'longitude': self.tx_lon
+                    },
+                    'timestamp_utc': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+                },
+                source="propagation_service"
+            )
+            self.logger.info(f"Published frequency plan: {recommendations}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to publish frequency plan: {e}")
+            return False
+
+    def subscribe_grid_updates(
+        self,
+        callback: Optional[Callable[[Dict[str, Any]], None]] = None
+    ) -> None:
+        """
+        Subscribe to electron density grid updates from SR-UKF filter.
+
+        Args:
+            callback: Optional custom callback for grid updates.
+                      If None, uses default handler that initializes ray tracer.
+        """
+        if not hasattr(self, '_mq_client') or self._mq_client is None:
+            self.logger.warning("Message queue not connected")
+            return
+
+        def default_callback(message: 'Message'):
+            """Default handler for grid updates."""
+            self.logger.info(f"Received grid update from {message.source}")
+
+            grid_data = message.data
+            if all(k in grid_data for k in ['ne_grid', 'lat', 'lon', 'alt']):
+                # Convert lists back to numpy arrays
+                ne_grid = np.array(grid_data['ne_grid'])
+                lat = np.array(grid_data['lat'])
+                lon = np.array(grid_data['lon'])
+                alt = np.array(grid_data['alt'])
+                xray_flux = grid_data.get('xray_flux', 0.0)
+
+                # Reinitialize ray tracer with new grid
+                self.initialize_ray_tracer(ne_grid, lat, lon, alt, xray_flux)
+
+                # Calculate and publish products
+                try:
+                    results = self.calculate_luf_muf()
+                    self.publish_luf_muf(results)
+
+                    # Also publish frequency plan
+                    if not results['blackout']:
+                        self.publish_frequency_plan(
+                            results['frequency_recommendations']
+                        )
+                except Exception as e:
+                    self.logger.error(f"Error processing grid update: {e}")
+
+        handler = callback if callback else default_callback
+
+        self._mq_client.subscribe(
+            topic_pattern=Topics.PROC_GRID_READY,
+            callback=handler
+        )
+        self.logger.info(f"Subscribed to grid updates on {Topics.PROC_GRID_READY}")
+
+    def run_service(self) -> None:
+        """
+        Run as a message-driven service.
+
+        Subscribes to grid updates and publishes propagation products.
+        Blocks until interrupted.
+        """
+        if not hasattr(self, '_mq_client') or self._mq_client is None:
+            raise RuntimeError("Message queue not connected. Call connect_message_queue() first.")
+
+        self.logger.info("Starting propagation service...")
+        self.subscribe_grid_updates()
+
+        try:
+            self._mq_client.start_consuming()
+        except KeyboardInterrupt:
+            self.logger.info("Propagation service stopped by user")
+        finally:
+            if self._mq_client:
+                self._mq_client.close()
+
+    def close(self) -> None:
+        """Close message queue connection."""
+        if hasattr(self, '_mq_client') and self._mq_client is not None:
+            self._mq_client.close()
+            self._mq_client = None

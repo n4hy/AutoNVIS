@@ -64,6 +64,85 @@ struct RayPath {
 };
 
 /**
+ * @brief D-region absorption model parameters
+ *
+ * Based on ITU-R P.531 and George-Bradley model
+ */
+struct DRegionParams {
+    double solar_zenith_angle = 0.0;     // Solar zenith angle (radians)
+    double xray_flux = 0.0;              // GOES X-ray flux (W/m²)
+    double sunspot_number = 100.0;       // Smoothed sunspot number (R12)
+    int month = 6;                       // Month (1-12) for seasonal variation
+    int year = 2026;                     // Year for solar cycle
+    double gyro_frequency = 1.3e6;       // Gyrofrequency at 90 km (Hz)
+
+    DRegionParams() = default;
+};
+
+/**
+ * @brief D-region absorption calculator
+ *
+ * Implements ITU-R P.531 / George-Bradley non-deviative absorption model
+ * with X-ray enhancement for Sudden Ionospheric Disturbances (SIDs)
+ */
+class DRegionAbsorption {
+public:
+    /**
+     * @brief Calculate solar zenith angle
+     *
+     * @param lat Geographic latitude (degrees)
+     * @param lon Geographic longitude (degrees)
+     * @param day_of_year Day number (1-365)
+     * @param ut_hour Universal time (hours, 0-24)
+     * @return Solar zenith angle in radians
+     */
+    static double solar_zenith_angle(double lat, double lon, int day_of_year, double ut_hour);
+
+    /**
+     * @brief Calculate collision frequency using MSIS-like model
+     *
+     * @param alt Altitude (km)
+     * @param params D-region parameters
+     * @return Collision frequency (Hz)
+     */
+    static double collision_frequency(double alt, const DRegionParams& params);
+
+    /**
+     * @brief Calculate non-deviative absorption (ITU-R P.531)
+     *
+     * @param freq Frequency (Hz)
+     * @param alt Altitude (km)
+     * @param params D-region parameters
+     * @return Absorption coefficient (dB/km)
+     */
+    static double absorption_db_per_km(double freq, double alt, const DRegionParams& params);
+
+    /**
+     * @brief Calculate total path absorption through D-region
+     *
+     * @param freq Frequency (Hz)
+     * @param elevation Elevation angle (degrees)
+     * @param params D-region parameters
+     * @return Total absorption (dB)
+     */
+    static double total_absorption(double freq, double elevation, const DRegionParams& params);
+
+    /**
+     * @brief Calculate X-ray enhancement factor for SID
+     *
+     * @param xray_flux GOES X-ray flux (W/m²)
+     * @param alt Altitude (km)
+     * @return Enhancement factor (multiplier, >= 1.0)
+     */
+    static double xray_enhancement(double xray_flux, double alt);
+
+private:
+    // Physical constants
+    static constexpr double EARTH_RADIUS_KM = 6371.0;
+    static constexpr double DEG_TO_RAD = 3.14159265358979323846 / 180.0;
+};
+
+/**
  * @brief Ionospheric grid interpolator
  */
 class IonoGrid {
@@ -87,8 +166,11 @@ public:
     // Get electron density gradient (for ray equation)
     Eigen::Vector3d electron_density_gradient(double lat, double lon, double alt) const;
 
-    // Get collision frequency (from X-ray flux model)
+    // Get collision frequency (legacy interface - use DRegionAbsorption for full model)
     double collision_frequency(double alt, double xray_flux = 0.0) const;
+
+    // Get collision frequency with full D-region model
+    double collision_frequency_full(double alt, const DRegionParams& params) const;
 
     // Get grid dimensions
     size_t n_lat() const { return lat_.size(); }
@@ -112,32 +194,106 @@ private:
 };
 
 /**
- * @brief IGRF geomagnetic field model
+ * @brief IGRF-13 geomagnetic field model
+ *
+ * Implements International Geomagnetic Reference Field (13th generation)
+ * with built-in coefficients for 2020-2025 epoch and secular variation.
+ * Falls back to enhanced dipole model if spherical harmonics unavailable.
  */
 class GeomagneticField {
 public:
+    /**
+     * @brief Default constructor - uses built-in IGRF-13 coefficients
+     */
     GeomagneticField();
+
+    /**
+     * @brief Constructor with external coefficient file
+     */
     explicit GeomagneticField(const std::string& igrf_coeffs_file);
 
-    // Get magnetic field vector at position (nT)
-    Eigen::Vector3d field(double lat, double lon, double alt, int year = 2026) const;
+    /**
+     * @brief Get magnetic field vector at position
+     *
+     * @param lat Geographic latitude (degrees)
+     * @param lon Geographic longitude (degrees)
+     * @param alt Altitude above sea level (km)
+     * @param year Decimal year (e.g., 2026.5)
+     * @return Field vector [North, East, Down] in nT
+     */
+    Eigen::Vector3d field(double lat, double lon, double alt, double year = 2026.0) const;
 
-    // Get magnetic field magnitude (nT)
-    double field_magnitude(double lat, double lon, double alt, int year = 2026) const;
+    // Overload for integer year (legacy compatibility)
+    Eigen::Vector3d field(double lat, double lon, double alt, int year) const {
+        return field(lat, lon, alt, static_cast<double>(year));
+    }
 
-    // Get magnetic dip angle (radians)
-    double dip_angle(double lat, double lon, double alt, int year = 2026) const;
+    /**
+     * @brief Get magnetic field magnitude (total intensity)
+     */
+    double field_magnitude(double lat, double lon, double alt, double year = 2026.0) const;
+    double field_magnitude(double lat, double lon, double alt, int year) const {
+        return field_magnitude(lat, lon, alt, static_cast<double>(year));
+    }
+
+    /**
+     * @brief Get magnetic dip (inclination) angle
+     * @return Dip angle in radians (positive downward in northern hemisphere)
+     */
+    double dip_angle(double lat, double lon, double alt, double year = 2026.0) const;
+    double dip_angle(double lat, double lon, double alt, int year) const {
+        return dip_angle(lat, lon, alt, static_cast<double>(year));
+    }
+
+    /**
+     * @brief Get magnetic declination angle
+     * @return Declination in radians (positive eastward)
+     */
+    double declination(double lat, double lon, double alt, double year = 2026.0) const;
+
+    /**
+     * @brief Get gyrofrequency at position
+     * @return Electron gyrofrequency in Hz
+     */
+    double gyro_frequency(double lat, double lon, double alt, double year = 2026.0) const;
+
+    /**
+     * @brief Check if full IGRF model is available
+     */
+    bool has_igrf_coefficients() const { return igrf_loaded_; }
 
 private:
-    // IGRF-13 Gauss coefficients
+    // IGRF-13 Gauss coefficients (g_n^m, h_n^m)
+    // Indexed as g_coeffs_[n][m] for n=1..13, m=0..n
     std::vector<std::vector<double>> g_coeffs_;
     std::vector<std::vector<double>> h_coeffs_;
 
-    // Load IGRF coefficients from file
+    // Secular variation coefficients
+    std::vector<std::vector<double>> g_sv_;
+    std::vector<std::vector<double>> h_sv_;
+
+    // Reference epoch for coefficients
+    double epoch_year_ = 2020.0;
+    bool igrf_loaded_ = false;
+
+    // Maximum degree of spherical harmonic expansion
+    static constexpr int MAX_DEGREE = 13;
+
+    // Initialize with built-in IGRF-13 coefficients
+    void initialize_igrf13();
+
+    // Load coefficients from external file
     void load_coefficients(const std::string& filename);
 
-    // Use simple dipole model if IGRF not available
+    // Calculate field using spherical harmonics
+    Eigen::Vector3d spherical_harmonic_field(double lat, double lon, double alt, double year) const;
+
+    // Enhanced dipole model (fallback)
     Eigen::Vector3d dipole_field(double lat, double lon, double alt) const;
+
+    // Associated Legendre functions
+    static double legendre_p(int n, int m, double x);
+    static double legendre_dp(int n, int m, double x);
 };
 
 /**

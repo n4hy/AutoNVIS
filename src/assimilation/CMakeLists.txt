@@ -11,8 +11,18 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -O3 -march=native")
 
 # Find required packages
 find_package(Eigen3 REQUIRED)
+find_package(OpenMP)
 find_package(HDF5 COMPONENTS CXX)  # Optional for now
 find_package(Boost COMPONENTS system thread)  # Optional for now
+
+# OpenMP support for parallel sigma point propagation
+if(OpenMP_CXX_FOUND)
+    message(STATUS "OpenMP found - enabling parallel sigma point propagation")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    add_definitions(-DHAVE_OPENMP)
+else()
+    message(STATUS "OpenMP not found - sigma point propagation will be sequential")
+endif()
 
 # Include directories
 include_directories(
@@ -57,6 +67,10 @@ add_library(autonvis_assimilation STATIC ${SOURCES} ${HEADERS})
 target_link_libraries(autonvis_assimilation
     Eigen3::Eigen
 )
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(autonvis_assimilation OpenMP::OpenMP_CXX)
+endif()
 
 if(HDF5_FOUND)
     target_link_libraries(autonvis_assimilation ${HDF5_LIBRARIES})

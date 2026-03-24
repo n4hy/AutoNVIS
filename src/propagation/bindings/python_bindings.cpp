@@ -46,6 +46,40 @@ PYBIND11_MODULE(raytracer, m) {
                    " points, range=" + std::to_string(p.ground_range) + " km>";
         });
 
+    // DRegionParams structure
+    py::class_<DRegionParams>(m, "DRegionParams")
+        .def(py::init<>())
+        .def_readwrite("solar_zenith_angle", &DRegionParams::solar_zenith_angle,
+                       "Solar zenith angle (radians)")
+        .def_readwrite("xray_flux", &DRegionParams::xray_flux,
+                       "GOES X-ray flux (W/m²)")
+        .def_readwrite("sunspot_number", &DRegionParams::sunspot_number,
+                       "Smoothed sunspot number (R12)")
+        .def_readwrite("month", &DRegionParams::month,
+                       "Month (1-12) for seasonal variation")
+        .def_readwrite("year", &DRegionParams::year,
+                       "Year for solar cycle")
+        .def_readwrite("gyro_frequency", &DRegionParams::gyro_frequency,
+                       "Gyrofrequency at 90 km (Hz)");
+
+    // DRegionAbsorption class
+    py::class_<DRegionAbsorption>(m, "DRegionAbsorption")
+        .def_static("solar_zenith_angle", &DRegionAbsorption::solar_zenith_angle,
+                   py::arg("lat"), py::arg("lon"), py::arg("day_of_year"), py::arg("ut_hour"),
+                   "Calculate solar zenith angle (radians)")
+        .def_static("collision_frequency", &DRegionAbsorption::collision_frequency,
+                   py::arg("alt"), py::arg("params"),
+                   "Calculate collision frequency (Hz)")
+        .def_static("absorption_db_per_km", &DRegionAbsorption::absorption_db_per_km,
+                   py::arg("freq"), py::arg("alt"), py::arg("params"),
+                   "Calculate absorption coefficient (dB/km)")
+        .def_static("total_absorption", &DRegionAbsorption::total_absorption,
+                   py::arg("freq"), py::arg("elevation"), py::arg("params"),
+                   "Calculate total D-region absorption (dB)")
+        .def_static("xray_enhancement", &DRegionAbsorption::xray_enhancement,
+                   py::arg("xray_flux"), py::arg("alt"),
+                   "Calculate X-ray enhancement factor for SID");
+
     // IonoGrid class
     py::class_<IonoGrid, std::shared_ptr<IonoGrid>>(m, "IonoGrid")
         .def(py::init<const Eigen::VectorXd&,
@@ -76,15 +110,26 @@ PYBIND11_MODULE(raytracer, m) {
     py::class_<GeomagneticField, std::shared_ptr<GeomagneticField>>(m, "GeomagneticField")
         .def(py::init<>())
         .def(py::init<const std::string&>(), py::arg("igrf_coeffs_file"))
-        .def("field", &GeomagneticField::field,
-             py::arg("lat"), py::arg("lon"), py::arg("alt"), py::arg("year") = 2026,
+        .def("field",
+             py::overload_cast<double, double, double, double>(&GeomagneticField::field, py::const_),
+             py::arg("lat"), py::arg("lon"), py::arg("alt"), py::arg("year") = 2026.0,
              "Get magnetic field vector (North, East, Down) in nT")
-        .def("field_magnitude", &GeomagneticField::field_magnitude,
-             py::arg("lat"), py::arg("lon"), py::arg("alt"), py::arg("year") = 2026,
+        .def("field_magnitude",
+             py::overload_cast<double, double, double, double>(&GeomagneticField::field_magnitude, py::const_),
+             py::arg("lat"), py::arg("lon"), py::arg("alt"), py::arg("year") = 2026.0,
              "Get magnetic field magnitude in nT")
-        .def("dip_angle", &GeomagneticField::dip_angle,
-             py::arg("lat"), py::arg("lon"), py::arg("alt"), py::arg("year") = 2026,
-             "Get magnetic dip angle in radians");
+        .def("dip_angle",
+             py::overload_cast<double, double, double, double>(&GeomagneticField::dip_angle, py::const_),
+             py::arg("lat"), py::arg("lon"), py::arg("alt"), py::arg("year") = 2026.0,
+             "Get magnetic dip angle in radians")
+        .def("declination", &GeomagneticField::declination,
+             py::arg("lat"), py::arg("lon"), py::arg("alt"), py::arg("year") = 2026.0,
+             "Get magnetic declination in radians")
+        .def("gyro_frequency", &GeomagneticField::gyro_frequency,
+             py::arg("lat"), py::arg("lon"), py::arg("alt"), py::arg("year") = 2026.0,
+             "Get electron gyrofrequency in Hz")
+        .def("has_igrf_coefficients", &GeomagneticField::has_igrf_coefficients,
+             "Check if full IGRF model is loaded");
 
     // MagnetoionicTheory class
     py::enum_<MagnetoionicTheory::Mode>(m, "Mode")

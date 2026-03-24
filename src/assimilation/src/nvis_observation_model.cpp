@@ -267,20 +267,18 @@ double NVISSounderObservationModel::interpolate_ne(
     const double w_lon = std::max(0.0, std::min(1.0, lon_frac));
     const double w_alt = std::max(0.0, std::min(1.0, alt_frac));
 
-    // Trilinear interpolation
+    // Trilinear interpolation using StateVector's get_ne method
     double ne_interp = 0.0;
     for (int di = 0; di <= 1; ++di) {
         for (int dj = 0; dj <= 1; ++dj) {
             for (int dk = 0; dk <= 1; ++dk) {
-                const size_t idx = (i_lat_clamp + di) * n_lon * n_alt +
-                                  (i_lon_clamp + dj) * n_alt +
-                                  (i_alt_clamp + dk);
-
                 const double weight = ((di == 0) ? (1.0 - w_lat) : w_lat) *
                                      ((dj == 0) ? (1.0 - w_lon) : w_lon) *
                                      ((dk == 0) ? (1.0 - w_alt) : w_alt);
 
-                ne_interp += weight * state.ne_grid[idx];
+                ne_interp += weight * state.get_ne(i_lat_clamp + di,
+                                                   i_lon_clamp + dj,
+                                                   i_alt_clamp + dk);
             }
         }
     }

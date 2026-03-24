@@ -248,6 +248,8 @@ class Topics:
     # Output topics
     OUT_FREQUENCY_PLAN = "out.frequency_plan"
     OUT_COVERAGE_MAP = "out.coverage_map"
+    OUT_LUF_MUF = "out.luf_muf"
+    OUT_PROPAGATION = "out.propagation"
     OUT_ALERT = "out.alert"
 
     # Analysis topics

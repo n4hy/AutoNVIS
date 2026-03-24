@@ -8,6 +8,10 @@
 #include <chrono>
 #include <stdexcept>
 
+#ifdef HAVE_OPENMP
+#include <omp.h>
+#endif
+
 namespace autonvis {
 
 SquareRootUKF::SquareRootUKF(
@@ -271,17 +275,22 @@ void SquareRootUKF::propagate_sigma_points(
     double dt,
     std::vector<Eigen::VectorXd>& propagated_points
 ) const {
-    propagated_points.clear();
-    propagated_points.reserve(sigma_points.size());
+    const size_t n_points = sigma_points.size();
+    propagated_points.resize(n_points);
 
-    for (const auto& point : sigma_points) {
+    // Parallel sigma point propagation through physics model
+    // Each sigma point is independent - embarrassingly parallel
+    #ifdef HAVE_OPENMP
+    #pragma omp parallel for schedule(dynamic)
+    #endif
+    for (size_t i = 0; i < n_points; ++i) {
         StateVector state_in(n_lat_, n_lon_, n_alt_);
-        state_in.from_vector(point);
+        state_in.from_vector(sigma_points[i]);
 
         StateVector state_out(n_lat_, n_lon_, n_alt_);
         physics_model_->propagate(state_in, dt, state_out);
 
-        propagated_points.push_back(state_out.to_vector());
+        propagated_points[i] = state_out.to_vector();
     }
 }
 
@@ -290,15 +299,18 @@ void SquareRootUKF::predict_observations(
     const ObservationModel& obs_model,
     std::vector<Eigen::VectorXd>& predicted_obs
 ) const {
-    predicted_obs.clear();
-    predicted_obs.reserve(sigma_points.size());
+    const size_t n_points = sigma_points.size();
+    predicted_obs.resize(n_points);
 
-    for (const auto& point : sigma_points) {
+    // Parallel observation prediction for each sigma point
+    #ifdef HAVE_OPENMP
+    #pragma omp parallel for schedule(dynamic)
+    #endif
+    for (size_t i = 0; i < n_points; ++i) {
         StateVector state(n_lat_, n_lon_, n_alt_);
-        state.from_vector(point);
+        state.from_vector(sigma_points[i]);
 
-        Eigen::VectorXd obs = obs_model.forward(state);
-        predicted_obs.push_back(obs);
+        predicted_obs[i] = obs_model.forward(state);
     }
 }
 
