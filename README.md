@@ -6,7 +6,7 @@
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-98%25%20passing-brightgreen)]()
-[![Test Suite](https://img.shields.io/badge/tests-455%2F464%20passing-brightgreen)]()
+[![Test Suite](https://img.shields.io/badge/tests-467%2F476%20passing-brightgreen)]()
 [![C++](https://img.shields.io/badge/C++-17-blue)]()
 [![Python](https://img.shields.io/badge/Python-3.11+-blue)]()
 [![License](https://img.shields.io/badge/license-TBD-lightgrey)]()
@@ -72,13 +72,13 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 - **OpenMP Parallelization**: Multi-threaded sigma point propagation for 4-8× speedup
 - **Build Optimizations**: -O3, -march=native, -ffast-math, LTO for 2-5× additional speedup
 - **Memory Efficiency**: Sparse localization extracts only non-zero covariance elements
-- **Test pass rate**: 455/464 tests passing (98%)
+- **Test pass rate**: 467/476 tests passing (98%)
 
 **New in v0.4.4**: NumPy 2.x compatibility and bug fixes:
 - **NumPy 2.x Support**: Updated deprecated `np.trapz` to `np.trapezoid` for NumPy 2.4+ compatibility
 - **pybind11 Upgrade**: Rebuilt C++ raytracer with pybind11 3.0.2 for NumPy 2.x ABI compatibility
 - **Dashboard API Fix**: Fixed sounders endpoint to list sounders without requiring prior analysis
-- **Test pass rate**: 455/464 tests passing (98%)
+- **Test pass rate**: 467/476 tests passing (98%)
 
 **New in v0.4.3**: Dashboard improvements and Solar Imaging:
 - **Comprehensive About Dialogs**: All dashboards now include detailed About buttons explaining display features, physics, data sources, and controls
@@ -145,7 +145,7 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 ✅ **CUDA GPU Acceleration** - Parallel ray tracing (512+ rays) with automatic CPU fallback
 ✅ **Sparse Matrix Optimization** - O(n²) Givens rotation Cholesky updates, 10-50× faster
 ✅ **OpenMP Parallelization** - Multi-threaded sigma points for 4-8× speedup
-✅ **Rigorously Tested** - 464 brutal tests, 98% passing (455/464)
+✅ **Rigorously Tested** - 476 brutal tests, 98% passing (467/476)
 ✅ **Well Documented** - 7,500+ lines of technical documentation
 
 ### System Capabilities
@@ -165,7 +165,7 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 
 - **41,000+** lines of production code (C++/Python)
 - **8,000** lines of test code (426 brutal tests)
-- **455/464** tests passing (98% pass rate)
+- **467/476** tests passing (98% pass rate)
 - **0** filter divergences in validation
 - **100×** memory reduction from localization
 - **~6 min** per filter cycle (full grid)
