@@ -1,6 +1,8 @@
 /**
  * @file python_bindings.cpp
  * @brief pybind11 bindings for 3D ray tracer
+ *
+ * Phase 18.4: Added CUDA ray tracer bindings
  */
 
 #include <pybind11/pybind11.h>
@@ -8,6 +10,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/complex.h>
 #include "ray_tracer_3d.hpp"
+#include "ray_tracer_cuda.hpp"
 
 namespace py = pybind11;
 using namespace autonvis::propagation;
@@ -235,7 +238,91 @@ PYBIND11_MODULE(raytracer, m) {
              "Returns:\n"
              "  List of RayPath objects covering all directions");
 
+    // Phase 18.4: CudaRayResult structure
+    py::class_<CudaRayResult>(m, "CudaRayResult")
+        .def(py::init<>())
+        .def_readwrite("lat", &CudaRayResult::lat)
+        .def_readwrite("lon", &CudaRayResult::lon)
+        .def_readwrite("alt", &CudaRayResult::alt)
+        .def_readwrite("path_length", &CudaRayResult::path_length)
+        .def_readwrite("status", &CudaRayResult::status)
+        .def("__repr__", [](const CudaRayResult& r) {
+            return "<CudaRayResult: lat=" + std::to_string(r.lat) +
+                   ", lon=" + std::to_string(r.lon) +
+                   ", status=" + std::to_string(r.status) + ">";
+        });
+
+    // Phase 18.4: CudaRayTracer class
+    py::class_<CudaRayTracer>(m, "CudaRayTracer")
+        .def(py::init<std::shared_ptr<IonoGrid>,
+                      std::shared_ptr<GeomagneticField>,
+                      const RayTracingConfig&>(),
+             py::arg("iono_grid"),
+             py::arg("geomag"),
+             py::arg("config") = RayTracingConfig(),
+             "Initialize CUDA-accelerated ray tracer (CPU fallback if CUDA unavailable)")
+        .def("cuda_available", &CudaRayTracer::cuda_available,
+             "Check if CUDA acceleration is available")
+        .def("device_name", &CudaRayTracer::device_name,
+             "Get compute device name (CUDA GPU or CPU)")
+        .def("trace_rays_parallel", &CudaRayTracer::trace_rays_parallel,
+             py::arg("initial_states"),
+             py::arg("freq_mhz"),
+             "Trace multiple rays in parallel (CUDA or OpenMP)\n\n"
+             "Parameters:\n"
+             "  initial_states: List of RayState objects\n"
+             "  freq_mhz: Frequency (MHz)\n\n"
+             "Returns:\n"
+             "  List of CudaRayResult objects")
+        .def("trace_ray_fan_parallel", &CudaRayTracer::trace_ray_fan_parallel,
+             py::arg("lat0"),
+             py::arg("lon0"),
+             py::arg("alt0"),
+             py::arg("elevations"),
+             py::arg("azimuths"),
+             py::arg("freq_mhz"),
+             "Trace ray fan in parallel\n\n"
+             "Parameters:\n"
+             "  lat0, lon0, alt0: Initial position\n"
+             "  elevations: List of elevation angles (degrees)\n"
+             "  azimuths: List of azimuth angles (degrees)\n"
+             "  freq_mhz: Frequency (MHz)\n\n"
+             "Returns:\n"
+             "  List of RayPath objects")
+        .def("calculate_nvis_coverage_parallel", &CudaRayTracer::calculate_nvis_coverage_parallel,
+             py::arg("tx_lat"),
+             py::arg("tx_lon"),
+             py::arg("freq_mhz"),
+             py::arg("elevation_min") = 70.0,
+             py::arg("elevation_max") = 90.0,
+             py::arg("elevation_step") = 2.0,
+             py::arg("azimuth_step") = 15.0,
+             "Calculate NVIS coverage in parallel (CUDA or OpenMP)\n\n"
+             "Parameters:\n"
+             "  tx_lat, tx_lon: Transmitter position (degrees)\n"
+             "  freq_mhz: Frequency (MHz)\n"
+             "  elevation_min/max: Elevation range (degrees)\n"
+             "  elevation_step: Elevation step (degrees)\n"
+             "  azimuth_step: Azimuth step (degrees)\n\n"
+             "Returns:\n"
+             "  List of RayPath objects")
+        .def("get_stats", [](const CudaRayTracer& tracer) {
+            auto stats = tracer.get_stats();
+            py::dict d;
+            d["last_trace_time_ms"] = stats.last_trace_time_ms;
+            d["rays_per_second"] = stats.rays_per_second;
+            d["used_cuda"] = stats.used_cuda;
+            return d;
+        }, "Get performance statistics");
+
     // Version info
     m.attr("__version__") = "1.0.0";
     m.attr("__author__") = "Auto-NVIS Development Team";
+
+    // Phase 18.4: CUDA availability info
+#ifdef HAVE_CUDA
+    m.attr("__cuda_compiled__") = true;
+#else
+    m.attr("__cuda_compiled__") = false;
+#endif
 }

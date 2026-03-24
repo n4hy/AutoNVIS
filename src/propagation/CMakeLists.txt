@@ -1,9 +1,28 @@
 cmake_minimum_required(VERSION 3.20)
-project(autonvis_raytracer VERSION 1.0.0 LANGUAGES CXX)
+
+# Phase 18.4: Check for CUDA before project() to enable CUDA language
+include(CheckLanguage)
+check_language(CUDA)
+
+if(CMAKE_CUDA_COMPILER)
+    project(autonvis_raytracer VERSION 1.0.0 LANGUAGES CXX CUDA)
+    set(HAVE_CUDA TRUE)
+    message(STATUS "CUDA found - GPU ray tracing enabled")
+else()
+    project(autonvis_raytracer VERSION 1.0.0 LANGUAGES CXX)
+    set(HAVE_CUDA FALSE)
+    message(STATUS "CUDA not found - using CPU fallback for ray tracing")
+endif()
 
 # C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# CUDA standard (if available)
+if(HAVE_CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+endif()
 
 # Build type (default to Release for optimized builds)
 if(NOT CMAKE_BUILD_TYPE)
@@ -43,16 +62,38 @@ include_directories(
     ${EIGEN3_INCLUDE_DIR}
 )
 
+# OpenMP support for parallel CPU fallback
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    message(STATUS "OpenMP found - enabling parallel CPU ray tracing")
+endif()
+
 # Source files
 set(RAYTRACER_SOURCES
     src/ray_tracer_3d.cpp
+    src/ray_tracer_cuda_wrapper.cpp
 )
+
+# CUDA sources (if available)
+if(HAVE_CUDA)
+    list(APPEND RAYTRACER_SOURCES src/ray_tracer_cuda.cu)
+endif()
 
 # Python module
 pybind11_add_module(raytracer
     ${RAYTRACER_SOURCES}
     bindings/python_bindings.cpp
 )
+
+# Add CUDA compile definitions
+if(HAVE_CUDA)
+    target_compile_definitions(raytracer PRIVATE HAVE_CUDA)
+endif()
+
+if(OpenMP_CXX_FOUND)
+    target_compile_definitions(raytracer PRIVATE HAVE_OPENMP)
+    target_link_libraries(raytracer PRIVATE OpenMP::OpenMP_CXX)
+endif()
 
 # Link Eigen3
 target_link_libraries(raytracer PRIVATE Eigen3::Eigen)
@@ -61,21 +102,26 @@ target_link_libraries(raytracer PRIVATE Eigen3::Eigen)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "Building in Debug mode")
     target_compile_options(raytracer PRIVATE
-        -O0
-        -g
-        -Wall
-        -Wextra
+        $<$<COMPILE_LANGUAGE:CXX>:-O0 -g -Wall -Wextra>
     )
+    if(HAVE_CUDA)
+        target_compile_options(raytracer PRIVATE
+            $<$<COMPILE_LANGUAGE:CUDA>:-G -g>
+        )
+    endif()
 else()
     message(STATUS "Building in Release mode with optimizations")
     target_compile_options(raytracer PRIVATE
-        -O3
-        -march=native
-        -ffast-math
-        -DNDEBUG
-        -funroll-loops
-        -fno-strict-aliasing
+        $<$<COMPILE_LANGUAGE:CXX>:-O3 -march=native -ffast-math -DNDEBUG -funroll-loops -fno-strict-aliasing>
     )
+    if(HAVE_CUDA)
+        # CUDA optimizations for Release build
+        target_compile_options(raytracer PRIVATE
+            $<$<COMPILE_LANGUAGE:CUDA>:-O3 --use_fast_math -DNDEBUG>
+        )
+        # Set CUDA architecture (default to common GPUs)
+        set_property(TARGET raytracer PROPERTY CUDA_ARCHITECTURES "60;70;75;80;86")
+    endif()
     # Enable link-time optimization for additional performance
     set_property(TARGET raytracer PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()

@@ -1,39 +1,100 @@
 /**
  * @file cholesky_update.cpp
- * @brief Implementation of Cholesky factor updates
+ * @brief Implementation of Cholesky factor updates with sparse matrix support
+ *
+ * Phase 18.2: Efficient rank-1 algorithms using Givens/hyperbolic rotations
+ * to avoid O(n²) covariance materialization.
  */
 
 #include "cholesky_update.hpp"
 #include <cmath>
 #include <stdexcept>
+#include <algorithm>
+
+#ifdef HAVE_OPENMP
+#include <omp.h>
+#endif
 
 namespace autonvis {
 
-// cholupdate is now inline in header
+// cholupdate is now inline in header (uses Givens rotations)
 
-Eigen::MatrixXd choldowndate(const Eigen::MatrixXd& S, const Eigen::VectorXd& v) {
-    const size_t n = S.rows();
+Eigen::MatrixXd choldowndate(const Eigen::MatrixXd& L, const Eigen::VectorXd& v) {
+    const Eigen::Index n = L.rows();
 
-    if (S.cols() != static_cast<Eigen::Index>(n)) {
-        throw std::invalid_argument("S must be square");
+    if (L.cols() != n) {
+        throw std::invalid_argument("L must be square");
     }
-    if (v.size() != static_cast<Eigen::Index>(n)) {
+    if (v.size() != n) {
         throw std::invalid_argument("v dimension mismatch");
     }
 
-    // Compute P_new = S * S^T - v * v^T
-    Eigen::MatrixXd P = S * S.transpose();
-    Eigen::MatrixXd P_new = P - v * v.transpose();
+    Eigen::MatrixXd L_new = L;
+    Eigen::VectorXd w = v;
 
-    // Check if still positive definite
-    Eigen::LLT<Eigen::MatrixXd> llt(P_new);
-    if (llt.info() != Eigen::Success) {
-        throw std::runtime_error("choldowndate: matrix would not be positive definite");
+    // Use hyperbolic Givens-like rotations for downdate
+    // This avoids forming the full covariance matrix P = L * L^T
+    for (Eigen::Index j = 0; j < n; ++j) {
+        double Ljj = L_new(j, j);
+        double wj = w(j);
+
+        // For downdate: L_new(j,j)² = L(j,j)² - w(j)²
+        double diff = Ljj * Ljj - wj * wj;
+
+        if (diff <= 0) {
+            throw std::runtime_error("choldowndate: matrix would not be positive definite");
+        }
+
+        double r = std::sqrt(diff);
+
+        // Hyperbolic rotation parameters
+        // cosh(θ) = Ljj / r, sinh(θ) = wj / r
+        double c = Ljj / r;  // > 1
+        double s = wj / r;
+
+        L_new(j, j) = r;
+
+        // Apply hyperbolic rotation to remaining elements
+        for (Eigen::Index i = j + 1; i < n; ++i) {
+            double Lij = L_new(i, j);
+            double wi = w(i);
+
+            // Hyperbolic rotation: preserves ||L||² - ||w||²
+            L_new(i, j) = (c * Lij - s * wi);
+            w(i) = (-s * Lij + c * wi);
+        }
     }
 
-    // Return upper triangular Cholesky factor (R such that P = R^T * R)
-    Eigen::MatrixXd L = llt.matrixL();
-    return L.transpose();
+    return L_new;
+}
+
+bool choldowndate_inplace(Eigen::MatrixXd& L, Eigen::VectorXd& w) {
+    const Eigen::Index n = L.rows();
+
+    for (Eigen::Index j = 0; j < n; ++j) {
+        double Ljj = L(j, j);
+        double wj = w(j);
+        double diff = Ljj * Ljj - wj * wj;
+
+        if (diff <= 0) {
+            return false;  // Would lose positive definiteness
+        }
+
+        double r = std::sqrt(diff);
+        double c = Ljj / r;
+        double s = wj / r;
+
+        L(j, j) = r;
+
+        for (Eigen::Index i = j + 1; i < n; ++i) {
+            double Lij = L(i, j);
+            double wi = w(i);
+            L(i, j) = c * Lij - s * wi;
+            w(i) = -s * Lij + c * wi;
+        }
+    }
+
+    return true;
 }
 
 Eigen::MatrixXd qr_decomposition(const Eigen::MatrixXd& A) {
@@ -249,6 +310,215 @@ Eigen::MatrixXd apply_localization(
     }
 
     return P_localized;
+}
+
+// ==============================
+// Sparse Matrix Support (18.2)
+// ==============================
+
+Eigen::SparseMatrix<double> sparse_cholesky(const Eigen::SparseMatrix<double>& P) {
+    // Use SimplicialLLT for sparse Cholesky decomposition
+    Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> solver;
+    solver.compute(P);
+
+    if (solver.info() != Eigen::Success) {
+        throw std::runtime_error("sparse_cholesky: decomposition failed");
+    }
+
+    // Extract L from the factorization
+    // SimplicialLLT stores L internally
+    return solver.matrixL();
+}
+
+std::vector<std::pair<int, int>> get_sparsity_pattern(
+    const Eigen::SparseMatrix<double>& localization
+) {
+    std::vector<std::pair<int, int>> pattern;
+    pattern.reserve(localization.nonZeros());
+
+    for (int k = 0; k < localization.outerSize(); ++k) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(localization, k); it; ++it) {
+            pattern.emplace_back(it.row(), it.col());
+        }
+    }
+
+    return pattern;
+}
+
+Eigen::SparseMatrix<double> extract_localized_covariance(
+    const Eigen::MatrixXd& S,
+    const Eigen::SparseMatrix<double>& localization
+) {
+    // Extract only elements P(i,j) = sum_k S(i,k)*S(j,k) for (i,j) in sparsity pattern
+    // This avoids forming the full O(n²) matrix
+
+    const Eigen::Index n = S.rows();
+    const Eigen::Index m = S.cols();
+
+    // Get sparsity pattern
+    std::vector<Eigen::Triplet<double>> triplets;
+    triplets.reserve(localization.nonZeros());
+
+    // For each non-zero in localization, compute P(i,j) = S(i,:) · S(j,:)
+    #ifdef HAVE_OPENMP
+    // Parallel version with thread-local triplet lists
+    std::vector<std::vector<Eigen::Triplet<double>>> thread_triplets;
+    #pragma omp parallel
+    {
+        #pragma omp single
+        thread_triplets.resize(omp_get_num_threads());
+    }
+
+    #pragma omp parallel for schedule(dynamic)
+    for (int k = 0; k < localization.outerSize(); ++k) {
+        int tid = omp_get_thread_num();
+        for (Eigen::SparseMatrix<double>::InnerIterator it(localization, k); it; ++it) {
+            int i = it.row();
+            int j = it.col();
+            double loc_val = it.value();
+
+            // Compute P(i,j) = sum_l S(i,l) * S(j,l)
+            double pij = S.row(i).dot(S.row(j));
+            thread_triplets[tid].emplace_back(i, j, pij * loc_val);
+        }
+    }
+
+    // Merge thread-local triplets
+    for (const auto& tlist : thread_triplets) {
+        triplets.insert(triplets.end(), tlist.begin(), tlist.end());
+    }
+    #else
+    // Sequential version
+    for (int k = 0; k < localization.outerSize(); ++k) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(localization, k); it; ++it) {
+            int i = it.row();
+            int j = it.col();
+            double loc_val = it.value();
+
+            // Compute P(i,j) = sum_l S(i,l) * S(j,l)
+            double pij = S.row(i).dot(S.row(j));
+            triplets.emplace_back(i, j, pij * loc_val);
+        }
+    }
+    #endif
+
+    // Build sparse matrix
+    Eigen::SparseMatrix<double> P_loc(n, n);
+    P_loc.setFromTriplets(triplets.begin(), triplets.end());
+
+    return P_loc;
+}
+
+Eigen::MatrixXd apply_sqrt_localization(
+    const Eigen::MatrixXd& S,
+    const Eigen::SparseMatrix<double>& localization,
+    int rank
+) {
+    const Eigen::Index n = S.rows();
+
+    // Extract localized covariance (sparse)
+    Eigen::SparseMatrix<double> P_loc = extract_localized_covariance(S, localization);
+
+    // Use sparse Cholesky to get sqrt of localized covariance
+    try {
+        Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> solver;
+        solver.compute(P_loc);
+
+        if (solver.info() == Eigen::Success) {
+            // Return dense version of L
+            return Eigen::MatrixXd(solver.matrixL());
+        }
+    } catch (...) {
+        // Fall through to dense fallback
+    }
+
+    // Fallback: convert sparse to dense and use standard LLT
+    Eigen::MatrixXd P_dense = Eigen::MatrixXd(P_loc);
+
+    // Ensure symmetric (handle numerical issues)
+    P_dense = (P_dense + P_dense.transpose()) / 2.0;
+
+    // Add small regularization if needed
+    double min_diag = P_dense.diagonal().minCoeff();
+    if (min_diag <= 0) {
+        P_dense.diagonal().array() += std::abs(min_diag) + 1e-6;
+    }
+
+    Eigen::LLT<Eigen::MatrixXd> llt(P_dense);
+    if (llt.info() == Eigen::Success) {
+        return Eigen::MatrixXd(llt.matrixL());
+    }
+
+    // Last resort: return original S
+    return S;
+}
+
+bool verify_sqrt_positive(const Eigen::MatrixXd& S) {
+    // Quick check: diagonal elements must be positive for lower triangular L
+    // such that L*L^T is positive definite
+    for (Eigen::Index i = 0; i < S.rows(); ++i) {
+        if (S(i, i) <= 0) {
+            return false;
+        }
+    }
+
+    // Check for NaN/Inf
+    if (!S.allFinite()) {
+        return false;
+    }
+
+    return true;
+}
+
+Eigen::MatrixXd cholupdate_batch(
+    const Eigen::MatrixXd& L,
+    const Eigen::MatrixXd& V
+) {
+    const Eigen::Index n = L.rows();
+    const Eigen::Index k = V.cols();
+
+    // For small k, sequential updates are fine
+    if (k <= 4) {
+        Eigen::MatrixXd L_new = L;
+        for (Eigen::Index j = 0; j < k; ++j) {
+            Eigen::VectorXd w = V.col(j);
+            cholupdate_inplace(L_new, w);
+        }
+        return L_new;
+    }
+
+    // For larger k, use blocked QR-based update
+    // L_new * L_new^T = L * L^T + V * V^T
+    // Form [L; V^T] and compute QR decomposition
+
+    Eigen::MatrixXd stacked(n + k, n);
+    stacked.topRows(n) = L;
+    stacked.bottomRows(k) = V.transpose();
+
+    // QR decomposition: stacked = Q * R
+    Eigen::HouseholderQR<Eigen::MatrixXd> qr(stacked);
+    Eigen::MatrixXd R = qr.matrixQR().triangularView<Eigen::Upper>();
+
+    // L_new is transpose of upper n×n block of R
+    return R.topRows(n).transpose();
+}
+
+Eigen::MatrixXd choldowndate_batch(
+    const Eigen::MatrixXd& L,
+    const Eigen::MatrixXd& V
+) {
+    const Eigen::Index k = V.cols();
+
+    // Sequential downdates (hyperbolic rotations don't batch well)
+    Eigen::MatrixXd L_new = L;
+    for (Eigen::Index j = 0; j < k; ++j) {
+        Eigen::VectorXd w = V.col(j);
+        if (!choldowndate_inplace(L_new, w)) {
+            throw std::runtime_error("choldowndate_batch: matrix would not be positive definite");
+        }
+    }
+
+    return L_new;
 }
 
 } // namespace autonvis
