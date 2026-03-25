@@ -163,7 +163,7 @@ ctest  # Run unit tests
 ```bash
 pytest tests/unit/
 pytest tests/integration/
-pytest tests/  # All tests (455 passed, 9 skipped)
+pytest tests/  # All tests (467 passed, 9 skipped)
 ```
 
 **C++ tests**
@@ -268,7 +268,7 @@ docker-compose logs -f assimilation
 
 ### Current Phase: Refinement & Optimization
 
-**Test Status**: 455/464 passing (98%)
+**Test Status**: 467/476 passing (98%)
 
 **Completed Optimizations** (Phase 18):
 - [x] Phase 18.1: OpenMP parallelization for sigma point propagation
