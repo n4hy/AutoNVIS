@@ -55,16 +55,22 @@ def main():
     mq_client = None
     subscribers = None
 
+    # Always create dashboard state for API routes (even without MQ)
+    dashboard_state = DashboardState(retention_hours=24)
+    logger.info("Dashboard state manager initialized")
+
+    # Create WebSocket manager
+    ws_manager = WebSocketManager()
+    logger.info("WebSocket manager initialized")
+
+    # Minimal subscribers dict for API routes (works without MQ)
+    subscribers = {
+        'state': dashboard_state,
+        'ws_manager': ws_manager
+    }
+
     if not args.no_mq:
         try:
-            # Initialize dashboard state
-            dashboard_state = DashboardState(retention_hours=24)
-            logger.info("Dashboard state manager initialized")
-
-            # Create WebSocket manager BEFORE subscribers
-            ws_manager = WebSocketManager()
-            logger.info("WebSocket manager initialized")
-
             # Initialize subscribers (each creates its own RabbitMQ connection)
             # WebSocket broadcast callback is set during construction
             grid_subscriber = GridDataSubscriber(

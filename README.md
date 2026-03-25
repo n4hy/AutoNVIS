@@ -113,7 +113,7 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 - **Historical Validation Framework**: Event replayer for historical storms, comprehensive validation metrics (RMSE/MAE/bias/correlation)
 - **Mock Test Infrastructure**: RabbitMQ mock with in-memory pub/sub for testing without live services
 
-**v0.3.5**: Web-based PHaRLAP Ray Tracer Dashboard with 10 REST API endpoints, real-time visualizations (ray paths, coverage maps, ionograms), winner triplets table, and WebSocket support for live updates. Access at `/raytracer` page.
+**v0.3.5**: Web-based PHaRLAP Ray Tracer Dashboard with 11 REST API endpoints, real-time visualizations (ray paths, coverage maps, ionograms), winner triplets table, and WebSocket support for live updates. Access at `/raytracer` page.
 
 **v0.3.4**: Full command line control with `--snr-cutoff` (-20 to 60 dB), `--elev-min/max`, and `--tolerance`. SNR filtering removes unusable paths from winners. Use `--help` for all options.
 
@@ -174,7 +174,7 @@ An **autonomous, unattended ionospheric monitoring and HF propagation forecastin
 - **3 integrators** (RK4, Adams-Bashforth, RK45 Dormand-Prince)
 - **27 ionosonde stations** (global GIRO network)
 - **5 visualizations** (Altitude/Range, 3D Geographic, Ionogram, Web Dashboard, Solar Imaging)
-- **10 REST endpoints** for raytracer web API
+- **11 REST endpoints** for raytracer web API
 - **4 months** development time (Phases 1-16)
 
 ---
@@ -928,6 +928,12 @@ Real-time web-based PHaRLAP ray tracing dashboard integrated into the AutoNVIS w
   - SNR with quality indicators (excellent/good/marginal/poor)
   - Hop count and reflection height
 - **Link Budget Chart**: SNR and path loss breakdown by frequency
+- **Collapsible Legend Panel**: Comprehensive color reference with four sections:
+  - Propagation Modes: O-Mode (DeepSkyBlue) and X-Mode (Coral)
+  - Frequency Metrics: LUF (Gold), MUF (Red), FOT (Green)
+  - SNR Quality: Excellent (>=20dB), Good (>=10dB), Marginal (>=0dB), Poor (<0dB)
+  - Map Markers: TX (Orange), RX (Green), Landing points (sized by SNR)
+  - Click header to collapse/expand; state persists via localStorage
 
 **Architecture**:
 ```
@@ -948,11 +954,23 @@ Web Browser
 python -m src.output.dashboard.main
 
 # Navigate to Ray Tracer page
-http://localhost:8000/raytracer
+http://localhost:8080/raytracer
 
 # Or use the API directly
-curl http://localhost:8000/api/raytracer/homing/latest
-curl http://localhost:8000/api/raytracer/winners/latest
+curl http://localhost:8080/api/raytracer/homing/latest
+curl http://localhost:8080/api/raytracer/winners/latest
+```
+
+**Demo Mode** (without RabbitMQ):
+```bash
+# Start dashboard without message queue
+python -m src.output.dashboard.main --no-mq
+
+# Load mock data for visualization testing
+curl -X POST http://localhost:8080/api/raytracer/demo/load_mock_data
+
+# Open in browser
+http://localhost:8080/raytracer
 ```
 
 **API Endpoints**:
@@ -969,6 +987,7 @@ curl http://localhost:8000/api/raytracer/winners/latest
 | `/api/raytracer/link_budget` | GET | SNR and path loss breakdown |
 | `/api/raytracer/coverage_map` | GET | Winner triplets for geographic display |
 | `/api/raytracer/statistics` | GET | Raytracer performance statistics |
+| `/api/raytracer/demo/load_mock_data` | POST | Load mock data for visualization testing |
 
 **Example API Response** (`/api/raytracer/frequencies/current`):
 ```json
@@ -1029,11 +1048,11 @@ pip install fastapi uvicorn websockets jinja2 aiohttp
 ```
 
 **Components**:
-- `src/output/dashboard/backend/raytracer_api.py` - FastAPI router (273 LOC)
+- `src/output/dashboard/backend/raytracer_api.py` - FastAPI router with demo endpoint (425 LOC)
 - `src/output/dashboard/backend/state_manager.py` - Thread-safe state storage (extended)
-- `src/output/dashboard/templates/raytracer.html` - Jinja2 template (148 lines)
-- `src/output/dashboard/static/js/raytracer.js` - Visualization JavaScript (815 LOC)
-- `src/output/dashboard/static/css/raytracer.css` - Page-specific styles (292 lines)
+- `src/output/dashboard/templates/raytracer.html` - Jinja2 template with legend panel (227 lines)
+- `src/output/dashboard/static/js/raytracer.js` - Visualization JavaScript (860 LOC)
+- `src/output/dashboard/static/css/raytracer.css` - Page-specific styles with legend (484 lines)
 - `src/output/dashboard/static/js/common/api_client.js` - API client (extended)
 
 **Dark Theme Color Scheme**:
@@ -2388,7 +2407,7 @@ stats = gnss_client.statistics
 - ✅ **Feb 14, 2026**: Comprehensive test suite foundation (233 tests)
 - ✅ **Feb 14, 2026**: Dashboard & RabbitMQ vhost support complete
 - ✅ **Feb 16, 2026**: PyQt TEC Display and Space Weather Display applications complete
-- ✅ **Mar 9, 2026**: Web Dashboard Ray Tracer complete (10 REST endpoints, visualizations)
+- ✅ **Mar 9, 2026**: Web Dashboard Ray Tracer complete (11 REST endpoints, visualizations)
 - ✅ **Mar 10, 2026**: v0.4.0 major release - RTS Smoother, HDF5 Persistence, GIRO Integration, Ray-Traced TEC, Historical Validation
 - ✅ **Mar 16, 2026**: v0.4.2 bug fix release - Fixed test infrastructure issues, datetime deprecation, numpy dtype errors, divide-by-zero edge case (401/426 tests, 94% pass rate)
 - 📋 **Jun 2026**: PHaRLAP integration (planned)
@@ -2763,7 +2782,7 @@ If you use Auto-NVIS in your research, please cite:
   - Link budget calculator: ~760 LOC
   - IONORT visualizations: ~1,400 LOC (with diagnostic console)
   - Unit tests: ~1,200 LOC
-- **Web Dashboard Ray Tracer**: ~1,530 LOC
+- **Web Dashboard Ray Tracer**: ~2,000 LOC
   - Backend API: ~273 LOC (FastAPI router, 10 endpoints)
   - State management extensions: ~150 LOC
   - JavaScript visualizations: ~815 LOC (Plotly.js + Leaflet.js)

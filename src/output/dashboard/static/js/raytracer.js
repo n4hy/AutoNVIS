@@ -14,6 +14,41 @@
 let coverageMap = null;
 let winnersData = [];
 let currentFreqHistoryHours = 24;
+let legendCollapsed = false;
+
+/**
+ * Toggle legend panel visibility
+ */
+function toggleLegend() {
+    legendCollapsed = !legendCollapsed;
+    const content = document.getElementById('legend-content');
+    const toggle = document.getElementById('legend-toggle');
+
+    if (legendCollapsed) {
+        content.classList.add('collapsed');
+        toggle.classList.add('collapsed');
+    } else {
+        content.classList.remove('collapsed');
+        toggle.classList.remove('collapsed');
+    }
+
+    // Save preference
+    localStorage.setItem('raytracerLegendCollapsed', legendCollapsed);
+}
+
+/**
+ * Restore legend state from localStorage
+ */
+function restoreLegendState() {
+    const saved = localStorage.getItem('raytracerLegendCollapsed');
+    if (saved === 'true') {
+        legendCollapsed = true;
+        const content = document.getElementById('legend-content');
+        const toggle = document.getElementById('legend-toggle');
+        if (content) content.classList.add('collapsed');
+        if (toggle) toggle.classList.add('collapsed');
+    }
+}
 
 // Color scheme constants
 const COLORS = {
@@ -55,6 +90,9 @@ const DarkPlotlyLayout = {
  * Initialize raytracer view
  */
 async function initRaytracerView() {
+    // Restore legend state
+    restoreLegendState();
+
     // Initialize coverage map
     initCoverageMap();
 
@@ -290,13 +328,20 @@ function initCoverageMap() {
     legend.onAdd = function() {
         const div = L.DomUtil.create('div', 'map-legend');
         div.innerHTML = `
-            <h4>Ray Modes</h4>
+            <h4>Map Legend</h4>
+            <div class="legend-item">
+                <span class="legend-marker" style="background:#FF5722;"></span> TX
+            </div>
+            <div class="legend-item">
+                <span class="legend-marker" style="background:#4CAF50;"></span> RX
+            </div>
             <div class="legend-item">
                 <span class="legend-color o-mode"></span> O-Mode
             </div>
             <div class="legend-item">
                 <span class="legend-color x-mode"></span> X-Mode
             </div>
+            <div class="legend-snr-hint">Circle size = SNR</div>
         `;
         return div;
     };

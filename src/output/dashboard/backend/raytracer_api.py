@@ -13,6 +13,7 @@ Provides REST API endpoints for PHaRLAP ray tracing visualization:
 
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, Dict, Any, List
+import numpy as np
 
 from .state_manager import DashboardState
 
@@ -269,5 +270,156 @@ def create_raytracer_routes(state: DashboardState) -> APIRouter:
         """
         stats = state.get_raytracer_statistics()
         return stats
+
+    @router.post("/demo/load_mock_data")
+    async def load_mock_data():
+        """
+        POST /api/raytracer/demo/load_mock_data
+        Load mock/demo data for visualization testing.
+        """
+        import random
+        from datetime import datetime, timedelta
+
+        # TX/RX positions (Boulder, CO to Denver, CO area)
+        tx_lat, tx_lon = 40.015, -105.270  # Boulder
+        rx_lat, rx_lon = 39.739, -104.990  # Denver
+
+        # Generate mock winner triplets with variety of modes, frequencies, SNR
+        winners = []
+        frequencies = [3.5, 5.0, 7.0, 10.0, 14.0, 18.0, 21.0, 24.0]
+
+        for freq in frequencies:
+            for mode in ['O', 'X']:
+                # Vary SNR based on frequency (higher freq = lower SNR typically)
+                base_snr = 25 - (freq / 2) + random.uniform(-5, 5)
+                snr = max(-10, min(35, base_snr))
+
+                # Landing position near RX with some error
+                landing_error = random.uniform(0.5, 15)
+                angle = random.uniform(0, 360)
+                import math
+                delta_lat = (landing_error / 111) * math.cos(math.radians(angle))
+                delta_lon = (landing_error / (111 * math.cos(math.radians(rx_lat)))) * math.sin(math.radians(angle))
+
+                winners.append({
+                    'frequency_mhz': freq,
+                    'mode': mode,
+                    'elevation_deg': random.uniform(15, 75),
+                    'azimuth_deg': random.uniform(85, 95),
+                    'group_delay_ms': 2.0 + freq * 0.1 + random.uniform(-0.5, 0.5),
+                    'ground_range_km': 50 + random.uniform(-5, 5),
+                    'hop_count': 1 if freq < 15 else random.choice([1, 2]),
+                    'reflection_height_km': 250 + random.uniform(-50, 100),
+                    'snr_db': snr,
+                    'path_loss_db': 100 + freq * 2 + random.uniform(-10, 10),
+                    'signal_strength_dbm': -80 + snr,
+                    'landing_lat': rx_lat + delta_lat,
+                    'landing_lon': rx_lon + delta_lon,
+                    'landing_error_km': landing_error
+                })
+
+        # Calculate MUF/LUF/FOT from winners
+        good_winners = [w for w in winners if w['snr_db'] > 0]
+        if good_winners:
+            freqs_good = [w['frequency_mhz'] for w in good_winners]
+            muf = max(freqs_good)
+            luf = min(freqs_good)
+            fot = muf * 0.85
+        else:
+            muf, luf, fot = 21.0, 5.0, 18.0
+
+        timestamp = datetime.utcnow().isoformat() + 'Z'
+
+        # Create homing result
+        homing_result = {
+            'timestamp': timestamp,
+            'muf': muf,
+            'luf': luf,
+            'fot': fot,
+            'num_winners': len(winners),
+            'winner_triplets': winners,
+            'tx_position': [tx_lat, tx_lon],
+            'rx_position': [rx_lat, rx_lon],
+            'great_circle_range_km': 50.0,
+            'computation_time_s': 2.3
+        }
+
+        state.update_homing_result(homing_result)
+
+        # Generate ray paths for visualization
+        ray_paths = []
+        for freq in [5.0, 10.0, 15.0, 20.0]:
+            for mode in ['O', 'X']:
+                # Simple parabolic ray path
+                import numpy as np
+                n_points = 50
+                max_range = 55
+                peak_alt = 200 + freq * 5 + (10 if mode == 'X' else 0)
+
+                ground_ranges = np.linspace(0, max_range, n_points).tolist()
+                # Parabolic arc
+                altitudes = [
+                    peak_alt * (1 - ((r - max_range/2) / (max_range/2))**2)
+                    for r in ground_ranges
+                ]
+                altitudes = [max(0, a) for a in altitudes]
+
+                ray_paths.append({
+                    'frequency_mhz': freq,
+                    'mode': mode,
+                    'ground_ranges_km': ground_ranges,
+                    'altitudes_km': altitudes
+                })
+
+        state.update_ray_paths({
+            'paths': ray_paths,
+            'ionosphere_profile': {
+                'ground_ranges': [0, 55],
+                'altitudes': [100, 100]
+            },
+            'tx_position': [tx_lat, tx_lon],
+            'rx_position': [rx_lat, rx_lon]
+        })
+
+        # Generate ionogram data
+        o_freqs = list(np.linspace(2, muf, 20))
+        x_freqs = list(np.linspace(2.5, muf + 0.5, 18))
+        o_delays = [2.0 + 0.2 * f + random.uniform(-0.1, 0.1) for f in o_freqs]
+        x_delays = [2.2 + 0.22 * f + random.uniform(-0.1, 0.1) for f in x_freqs]
+
+        state.update_ionogram({
+            'o_mode': {'frequencies': o_freqs, 'delays': o_delays},
+            'x_mode': {'frequencies': x_freqs, 'delays': x_delays},
+            'timestamp': timestamp
+        })
+
+        # Add frequency history (last 24 hours)
+        now = datetime.utcnow()
+        for i in range(48):  # Every 30 min for 24 hours
+            hist_time = now - timedelta(minutes=30 * (48 - i))
+            # Vary MUF/LUF with time of day (simple diurnal pattern)
+            hour = hist_time.hour
+            diurnal = 1.0 + 0.3 * math.sin((hour - 6) * math.pi / 12)
+            hist_result = {
+                'timestamp': hist_time.isoformat() + 'Z',
+                'muf': muf * diurnal * random.uniform(0.95, 1.05),
+                'luf': luf * (2 - diurnal) * random.uniform(0.95, 1.05),
+                'fot': fot * diurnal * random.uniform(0.95, 1.05),
+                'num_winners': random.randint(8, 16),
+                'winner_triplets': []
+            }
+            state.update_homing_result(hist_result)
+
+        # Re-apply current result so it shows as latest
+        state.update_homing_result(homing_result)
+
+        return {
+            'status': 'ok',
+            'message': 'Mock data loaded successfully',
+            'winners_count': len(winners),
+            'muf': muf,
+            'luf': luf,
+            'fot': fot
+        }
 
     return router

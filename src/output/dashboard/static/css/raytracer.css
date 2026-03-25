@@ -198,6 +198,24 @@
     background: #FF6B6B;
 }
 
+.legend-marker {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+    border: 2px solid white;
+    display: inline-block;
+}
+
+.legend-snr-hint {
+    font-size: 10px;
+    color: #888;
+    margin-top: 8px;
+    font-style: italic;
+    border-top: 1px solid #444;
+    padding-top: 6px;
+}
+
 /* Table scrolling */
 .table-responsive {
     max-height: 400px;
@@ -264,15 +282,189 @@
     color: #888;
 }
 
+/* Collapsible Legend Panel */
+.legend-panel {
+    background: #2d2d2d;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.legend-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #252525;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid #3a3a3a;
+}
+
+.legend-header:hover {
+    background: #303030;
+}
+
+.legend-header span:first-child {
+    font-weight: 600;
+    font-size: 14px;
+    color: #e0e0e0;
+}
+
+.legend-toggle {
+    color: #888;
+    font-size: 12px;
+    transition: transform 0.2s ease;
+}
+
+.legend-toggle.collapsed {
+    transform: rotate(-90deg);
+}
+
+.legend-content {
+    padding: 16px;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+    overflow: hidden;
+}
+
+.legend-content.collapsed {
+    max-height: 0;
+    padding: 0 16px;
+}
+
+.legend-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+}
+
+.legend-section {
+    min-width: 0;
+}
+
+.legend-section h4 {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: #e0e0e0;
+}
+
+.legend-swatch {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+/* Mode swatches */
+.o-mode-swatch {
+    background: #00BFFF;
+}
+
+.x-mode-swatch {
+    background: #FF6B6B;
+}
+
+/* Frequency metric swatches */
+.luf-swatch {
+    background: #FFD700;
+}
+
+.muf-swatch {
+    background: #F44336;
+}
+
+.fot-swatch {
+    background: #4CAF50;
+}
+
+/* SNR quality swatches */
+.snr-excellent-swatch {
+    background: #4CAF50;
+}
+
+.snr-good-swatch {
+    background: #8BC34A;
+}
+
+.snr-marginal-swatch {
+    background: #FF9800;
+}
+
+.snr-poor-swatch {
+    background: #F44336;
+}
+
+/* Map marker swatches */
+.tx-swatch {
+    background: #FF5722;
+    border-radius: 50%;
+    border: 2px solid white;
+    width: 12px;
+    height: 12px;
+}
+
+.rx-swatch {
+    background: #4CAF50;
+    border-radius: 50%;
+    border: 2px solid white;
+    width: 12px;
+    height: 12px;
+}
+
+.legend-circle-demo {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.legend-circle-demo::before,
+.legend-circle-demo::after {
+    content: '';
+    border-radius: 50%;
+    background: #00BFFF;
+    border: 1px solid white;
+}
+
+.legend-circle-demo::before {
+    width: 6px;
+    height: 6px;
+}
+
+.legend-circle-demo::after {
+    width: 12px;
+    height: 12px;
+}
+
 /* Responsive adjustments */
 @media (max-width: 1200px) {
     .grid-4col {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .legend-grid {
         grid-template-columns: repeat(2, 1fr);
     }
 }
 
 @media (max-width: 768px) {
     .grid-4col {
+        grid-template-columns: 1fr;
+    }
+
+    .legend-grid {
         grid-template-columns: 1fr;
     }
 

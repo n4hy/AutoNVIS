@@ -14,6 +14,85 @@
     <p>HF propagation ray tracing, winner triplets, and link budget analysis</p>
 </div>
 
+<!-- Collapsible Legend Panel -->
+<div class="legend-panel" id="legend-panel">
+    <div class="legend-header" onclick="toggleLegend()">
+        <span>Legend</span>
+        <span class="legend-toggle" id="legend-toggle">&#9660;</span>
+    </div>
+    <div class="legend-content" id="legend-content">
+        <div class="legend-grid">
+            <!-- Propagation Modes -->
+            <div class="legend-section">
+                <h4>Propagation Modes</h4>
+                <div class="legend-row">
+                    <span class="legend-swatch o-mode-swatch"></span>
+                    <span>O-Mode (Ordinary)</span>
+                </div>
+                <div class="legend-row">
+                    <span class="legend-swatch x-mode-swatch"></span>
+                    <span>X-Mode (Extraordinary)</span>
+                </div>
+            </div>
+
+            <!-- Frequency Metrics -->
+            <div class="legend-section">
+                <h4>Frequency Metrics</h4>
+                <div class="legend-row">
+                    <span class="legend-swatch luf-swatch"></span>
+                    <span>LUF - Lowest Usable Frequency</span>
+                </div>
+                <div class="legend-row">
+                    <span class="legend-swatch muf-swatch"></span>
+                    <span>MUF - Maximum Usable Frequency</span>
+                </div>
+                <div class="legend-row">
+                    <span class="legend-swatch fot-swatch"></span>
+                    <span>FOT - Optimum Traffic Frequency</span>
+                </div>
+            </div>
+
+            <!-- SNR Quality -->
+            <div class="legend-section">
+                <h4>SNR Quality</h4>
+                <div class="legend-row">
+                    <span class="legend-swatch snr-excellent-swatch"></span>
+                    <span>Excellent (&ge;20 dB)</span>
+                </div>
+                <div class="legend-row">
+                    <span class="legend-swatch snr-good-swatch"></span>
+                    <span>Good (&ge;10 dB)</span>
+                </div>
+                <div class="legend-row">
+                    <span class="legend-swatch snr-marginal-swatch"></span>
+                    <span>Marginal (&ge;0 dB)</span>
+                </div>
+                <div class="legend-row">
+                    <span class="legend-swatch snr-poor-swatch"></span>
+                    <span>Poor (&lt;0 dB)</span>
+                </div>
+            </div>
+
+            <!-- Map Markers -->
+            <div class="legend-section">
+                <h4>Map Markers</h4>
+                <div class="legend-row">
+                    <span class="legend-swatch tx-swatch"></span>
+                    <span>Transmitter (TX)</span>
+                </div>
+                <div class="legend-row">
+                    <span class="legend-swatch rx-swatch"></span>
+                    <span>Receiver (RX)</span>
+                </div>
+                <div class="legend-row">
+                    <span class="legend-circle-demo"></span>
+                    <span>Landing Point (size = SNR)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Current Frequencies (MUF/LUF/FOT) -->
 <div class="grid-3col">
     <div class="stat-card luf-card">
